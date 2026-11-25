@@ -1,5 +1,13 @@
 import { MESSAGE_ACTIONS, STORAGE_KEYS } from "@shared/constants";
-import { ExtensionStorage, PopupState, SessionData, StoredSession } from "@shared/types";
+import {
+  ActiveSessions,
+  ExtensionStorage,
+  PopupState,
+  SessionBackup,
+  SessionData,
+  StoredSession,
+  ThemePreference,
+} from "@shared/types";
 import { ExtensionError, generateId, getDomainFromUrl, handleError, validateSessionName } from "@shared/utils";
 import { ChromeApiService } from "./chromeApi.service";
 
@@ -170,6 +178,116 @@ export class PopupService {
     }
   }
 
+  async clearCurrentSiteSessions(): Promise<number> {
+    try {
+      const before = this.state.sessions.length;
+      this.state.sessions = this.state.sessions.filter((s) => s.domain !== this.state.currentDomain);
+      delete this.state.activeSessions[this.state.currentDomain];
+      await this.saveStorageData();
+      return before - this.state.sessions.length;
+    } catch (error) {
+      throw new ExtensionError(handleError(error, "PopupService.clearCurrentSiteSessions"));
+    }
+  }
+
+  async getTheme(): Promise<ThemePreference> {
+    try {
+      const result = await this.chromeApi.getStorageData<ExtensionStorage>([STORAGE_KEYS.THEME]);
+      const theme = result[STORAGE_KEYS.THEME];
+      return theme === "light" || theme === "dark" || theme === "system" ? theme : "system";
+    } catch {
+      return "system";
+    }
+  }
+
+  async setTheme(theme: ThemePreference): Promise<void> {
+    await this.chromeApi.setStorageData({ [STORAGE_KEYS.THEME]: theme });
+  }
+
+  exportBackup(): SessionBackup {
+    return {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      sessions: this.state.sessions,
+      activeSessions: this.state.activeSessions,
+    };
+  }
+
+  async importBackup(rawJson: string, mode: "merge" | "replace"): Promise<{ imported: number; skipped: number }> {
+    try {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(rawJson);
+      } catch {
+        throw new ExtensionError("Invalid JSON backup file");
+      }
+
+      if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as SessionBackup).sessions)) {
+        throw new ExtensionError("Invalid backup format: missing sessions array");
+      }
+
+      const rawBackup = parsed as Partial<SessionBackup>;
+      const validSessions = rawBackup.sessions!.filter(isValidSessionRecord).map((s, idx) => ({
+        ...s,
+        createdAt: typeof s.createdAt === "number" ? s.createdAt : Date.now(),
+        lastUsed: typeof s.lastUsed === "number" ? s.lastUsed : Date.now(),
+        order: typeof s.order === "number" ? s.order : idx,
+      }));
+
+      if (rawBackup.sessions!.length > 0 && validSessions.length === 0) {
+        throw new ExtensionError("No valid sessions found in backup file");
+      }
+
+      const incomingActive: ActiveSessions =
+        rawBackup.activeSessions && typeof rawBackup.activeSessions === "object" ? rawBackup.activeSessions : {};
+
+      let imported = 0;
+      let skipped = 0;
+
+      if (mode === "replace") {
+        this.state.sessions = validSessions;
+        const validIds = new Set(validSessions.map((s) => s.id));
+        const nextActive: ActiveSessions = {};
+        for (const [domain, id] of Object.entries(incomingActive)) {
+          if (typeof id === "string" && validIds.has(id)) {
+            nextActive[domain] = id;
+          }
+        }
+        this.state.activeSessions = nextActive;
+        imported = validSessions.length;
+      } else {
+        const existingIds = new Set(this.state.sessions.map((s) => s.id));
+        const maxOrderByDomain = new Map<string, number>();
+        for (const s of this.state.sessions) {
+          maxOrderByDomain.set(s.domain, Math.max(maxOrderByDomain.get(s.domain) ?? -1, s.order ?? 0));
+        }
+
+        for (const s of validSessions) {
+          if (existingIds.has(s.id)) {
+            skipped++;
+            continue;
+          }
+          const nextOrder = (maxOrderByDomain.get(s.domain) ?? -1) + 1;
+          maxOrderByDomain.set(s.domain, nextOrder);
+          this.state.sessions.push({ ...s, order: nextOrder });
+          existingIds.add(s.id);
+          imported++;
+        }
+
+        for (const [domain, id] of Object.entries(incomingActive)) {
+          if (!this.state.activeSessions[domain] && typeof id === "string" && existingIds.has(id)) {
+            this.state.activeSessions[domain] = id;
+          }
+        }
+      }
+
+      await this.saveStorageData();
+      return { imported, skipped };
+    } catch (error) {
+      throw new ExtensionError(handleError(error, "PopupService.importBackup"));
+    }
+  }
+
   getSession(sessionId: string): SessionData | undefined {
     return this.state.sessions.find((s) => s.id === sessionId);
   }
@@ -232,4 +350,22 @@ export class PopupService {
       [STORAGE_KEYS.ACTIVE_SESSIONS]: this.state.activeSessions,
     });
   }
+}
+
+function isValidSessionRecord(item: unknown): item is SessionData {
+  if (!item || typeof item !== "object") return false;
+  const s = item as Partial<SessionData>;
+  return (
+    typeof s.id === "string" &&
+    s.id.length > 0 &&
+    typeof s.name === "string" &&
+    s.name.trim().length > 0 &&
+    typeof s.domain === "string" &&
+    s.domain.length > 0 &&
+    Array.isArray(s.cookies) &&
+    !!s.localStorage &&
+    typeof s.localStorage === "object" &&
+    !!s.sessionStorage &&
+    typeof s.sessionStorage === "object"
+  );
 }

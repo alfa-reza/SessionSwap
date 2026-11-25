@@ -460,4 +460,126 @@ describe("PopupService", () => {
       );
     });
   });
+
+  describe("settings, backup & restore", () => {
+    const makeSession = (id: string, name: string, domain = "example.com", order = 0): SessionData => ({
+      id,
+      name,
+      domain,
+      order,
+      createdAt: 1000,
+      lastUsed: 1000,
+      cookies: [],
+      localStorage: { key: id },
+      sessionStorage: {},
+    });
+
+    test("getTheme and setTheme persist theme preference", async () => {
+      const { setStorageData } = setupMockChromeApi({
+        getStorageData: async () => ({ theme: "dark" }),
+      });
+
+      const service = new PopupService();
+      expect(await service.getTheme()).toBe("dark");
+
+      await service.setTheme("light");
+      expect(setStorageData).toHaveBeenCalledWith({ theme: "light" });
+    });
+
+    test("exportBackup returns structured JSON backup of all sessions", async () => {
+      const sessions = [makeSession("1", "Work"), makeSession("2", "Other", "other.com")];
+      setupMockChromeApi({
+        getStorageData: async () => ({ sessions, activeSessions: { "example.com": "1" } }),
+      });
+
+      const service = new PopupService();
+      await service.initialize();
+
+      const backup = service.exportBackup();
+      expect(backup.version).toBe(1);
+      expect(backup.sessions).toHaveLength(2);
+      expect(backup.activeSessions).toEqual({ "example.com": "1" });
+    });
+
+    test("importBackup in merge mode adds new sessions and skips duplicate IDs", async () => {
+      const existing = [makeSession("1", "Existing", "example.com", 0)];
+      setupMockChromeApi({
+        getStorageData: async () => ({ sessions: existing, activeSessions: { "example.com": "1" } }),
+      });
+
+      const service = new PopupService();
+      await service.initialize();
+
+      const payload = JSON.stringify({
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        sessions: [makeSession("1", "Duplicate"), makeSession("2", "Restored", "example.com", 0)],
+        activeSessions: { "example.com": "2", "new.com": "2" },
+      });
+
+      const result = await service.importBackup(payload, "merge");
+      expect(result).toEqual({ imported: 1, skipped: 1 });
+
+      const state = service.getState();
+      expect(state.sessions.map((s) => s.id)).toEqual(["1", "2"]);
+      expect(state.sessions[1].order).toBe(1);
+      expect(state.activeSessions["example.com"]).toBe("1");
+    });
+
+    test("importBackup in replace mode replaces all sessions and activeSessions", async () => {
+      setupMockChromeApi({
+        getStorageData: async () => ({
+          sessions: [makeSession("old", "Old")],
+          activeSessions: { "example.com": "old" },
+        }),
+      });
+
+      const service = new PopupService();
+      await service.initialize();
+
+      const payload = JSON.stringify({
+        version: 1,
+        sessions: [makeSession("new-1", "Fresh")],
+        activeSessions: { "example.com": "new-1", stale: "missing-id" },
+      });
+
+      const result = await service.importBackup(payload, "replace");
+      expect(result).toEqual({ imported: 1, skipped: 0 });
+
+      const state = service.getState();
+      expect(state.sessions.map((s) => s.id)).toEqual(["new-1"]);
+      expect(state.activeSessions).toEqual({ "example.com": "new-1" });
+    });
+
+    test("importBackup rejects invalid JSON or malformed backup", async () => {
+      setupMockChromeApi();
+      const service = new PopupService();
+      await service.initialize();
+
+      await expect(service.importBackup("{not-json", "merge")).rejects.toThrow("Invalid JSON backup file");
+      await expect(service.importBackup(JSON.stringify({ foo: "bar" }), "merge")).rejects.toThrow(
+        "missing sessions array"
+      );
+    });
+
+    test("clearCurrentSiteSessions removes only current domain sessions", async () => {
+      const sessions = [makeSession("1", "Site A1", "example.com"), makeSession("2", "Site B", "other.com")];
+      setupMockChromeApi({
+        getStorageData: async () => ({
+          sessions,
+          activeSessions: { "example.com": "1", "other.com": "2" },
+        }),
+      });
+
+      const service = new PopupService();
+      await service.initialize();
+
+      const removed = await service.clearCurrentSiteSessions();
+      expect(removed).toBe(1);
+
+      const state = service.getState();
+      expect(state.sessions.map((s) => s.id)).toEqual(["2"]);
+      expect(state.activeSessions).toEqual({ "other.com": "2" });
+    });
+  });
 });

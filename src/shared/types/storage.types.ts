@@ -5,7 +5,17 @@ export interface StorageData {
   sessionStorage: Record<string, string>;
 }
 
+export type ThemePreference = "system" | "light" | "dark";
+
+export interface SessionBackup {
+  version: number;
+  exportedAt: string;
+  sessions: SessionData[];
+  activeSessions: ActiveSessions;
+}
+
 export interface ExtensionStorage {
   sessions: SessionData[];
   activeSessions: ActiveSessions;
+  theme?: ThemePreference;
 }

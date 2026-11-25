@@ -315,7 +315,86 @@ async function runE2E() {
     assert.deepEqual(remaining, ["Alice"]);
     await closePopup();
 
-    console.log("✅ Firefox E2E login/session-switch suite passed!");
+    // 8. Settings: theme persistence, clear site sessions, and JSON restore
+    await withPopup(`
+      doc.getElementById('settingsBtn').click();
+      doc.querySelector('[data-theme-option="dark"]').click();
+    `);
+    await Bun.sleep(200);
+    await closePopup();
+
+    const persistedTheme = await withPopup<string>("return doc.documentElement.dataset.theme;");
+    assert.equal(persistedTheme, "dark");
+    await closePopup();
+
+    // Clear all site sessions via Settings -> confirmDelete
+    await withPopup(`
+      doc.getElementById('settingsBtn').click();
+      doc.getElementById('clearSiteSessionsBtn').click();
+      doc.getElementById('confirmDelete').click();
+    `);
+    await Bun.sleep(300);
+    await closePopup();
+    const afterClear = await withPopup<number>("return doc.querySelectorAll('.session-item').length;");
+    assert.equal(afterClear, 0);
+    await closePopup();
+
+    // Restore JSON backup into #importBackupInput
+    const backupJson = JSON.stringify({
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      sessions: [
+        {
+          id: "restored-1",
+          name: "Restored Alice",
+          domain: `localhost:${server.port}`,
+          order: 0,
+          createdAt: Date.now(),
+          lastUsed: Date.now(),
+          cookies: [],
+          localStorage: {},
+          sessionStorage: {},
+        },
+      ],
+      activeSessions: {},
+    });
+    await withPopup(`
+      doc.getElementById('settingsBtn').click();
+      const win = doc.defaultView;
+      const input = doc.getElementById('importBackupInput');
+      const dt = new win.DataTransfer();
+      dt.items.add(new win.File([${JSON.stringify(backupJson)}], 'backup.json', { type: 'application/json' }));
+      input.files = dt.files;
+      input.dispatchEvent(new win.Event('change', { bubbles: true }));
+    `);
+    await Bun.sleep(400);
+    const restoreRes = await m.cmd<{
+      value: { status: string; viewHeight: number; scrollHeight: number; names: string[] };
+    }>("WebDriver:ExecuteScript", {
+      script: `
+          const pb = Array.from(document.querySelectorAll('browser')).find((b) => (b.currentURI?.spec || '').includes('popup/index.html'));
+          const doc = pb.contentDocument;
+          const view = doc.getElementById('settingsView');
+          const viewHeight = view.getBoundingClientRect().height;
+          const status = doc.getElementById('settingsStatus').textContent;
+          doc.getElementById('settingsBackBtn').click();
+          return {
+            status,
+            viewHeight,
+            scrollHeight: doc.documentElement.scrollHeight,
+            names: Array.from(doc.querySelectorAll('.session-item .session-name')).map((e) => e.textContent),
+          };
+        `,
+    });
+    assert.equal(restoreRes.value.status, "Restored 1 session(s)");
+    assert.ok(
+      restoreRes.value.viewHeight > 200,
+      `Expected full settings view height, got ${restoreRes.value.viewHeight}`
+    );
+    assert.deepEqual(restoreRes.value.names, ["Restored Alice"]);
+    await closePopup();
+
+    console.log("✅ Firefox E2E login/session-switch/settings suite passed!");
   } finally {
     m?.close();
     ff.kill();
