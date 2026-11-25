@@ -1,6 +1,6 @@
-# Privacy Policy for Session Switcher
+# Privacy Policy for SessionSwap
 
-Session Switcher is a browser extension designed to help users manage, save, and switch between login sessions easily.
+SessionSwap is a browser extension designed to help users manage, save, and switch between login sessions easily.
 
 ## Data Collection
 

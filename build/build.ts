@@ -1,6 +1,6 @@
-import { $ } from "bun";
-import path from "path";
 import { readdir } from "fs/promises";
+import path from "path";
+import { $ } from "bun";
 
 const rootDir = path.resolve(import.meta.dir, "..");
 const popupSrc = path.join(rootDir, "src", "popup");
@@ -15,7 +15,7 @@ if (!["firefox", "chrome"].includes(target)) {
   process.exit(1);
 }
 
-console.log(`Building Session Switcher Extension for ${target}...`);
+console.log(`Building SessionSwap Extension for ${target}...`);
 
 // Clean previous build
 await $`rm -rf ${distDir}`;

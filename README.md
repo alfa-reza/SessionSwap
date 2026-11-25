@@ -1,6 +1,6 @@
-# 🔄 Session Switcher
+# 🔄 SessionSwap
 
-**Session Switcher** is a browser extension that allows users to manage, save, and switch between multiple login sessions with ease and 100% free!.
+**SessionSwap** is a browser extension that allows users to manage, save, and switch between multiple login sessions with ease and 100% free!.
 It's especially useful for developers, testers, or anyone who frequently switches between accounts or environments.
 
 https://github.com/user-attachments/assets/480baf62-3279-45be-8a30-88f76a90a5f8

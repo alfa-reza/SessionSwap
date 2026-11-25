@@ -5,12 +5,12 @@ const messageService = new MessageService();
 
 // Extension startup
 chrome.runtime.onStartup.addListener(() => {
-  console.log("Session Switcher extension started");
+  console.log("SessionSwap extension started");
 });
 
 // Extension install/update
 chrome.runtime.onInstalled.addListener((details) => {
-  console.log("Session Switcher extension installed/updated", details);
+  console.log("SessionSwap extension installed/updated", details);
 
   if (details.reason === "install") {
     chrome.storage.local.set({

@@ -7,7 +7,7 @@ await build({
   platform: "browser",
   target: "firefox109",
   format: "iife",
-  globalName: "SessionSwitcher",
+  globalName: "SessionSwap",
   minify: false,
   sourcemap: false,
 });

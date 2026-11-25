@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Session Switcher",
+  "name": "SessionSwap",
   "version": "1.3.0",
   "description": "A Chrome extension for switching between sessions",
 
@@ -13,7 +13,7 @@
 
   "action": {
     "default_popup": "popup/index.html",
-    "default_title": "Session Switcher",
+    "default_title": "SessionSwap",
     "default_icon": {
       "16": "assets/icons/icon-16.png",
       "32": "assets/icons/icon-32.png",

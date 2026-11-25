@@ -176,7 +176,7 @@ class PopupController {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
-  console.log("Session Switcher popup loaded");
+  console.log("SessionSwap popup loaded");
   const controller = new PopupController();
   await controller.initialize();
 
