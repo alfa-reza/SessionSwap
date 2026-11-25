@@ -1,6 +1,6 @@
 import { CookieHandler } from "@background/handlers/cookie.handler";
 import { afterEach, describe, expect, jest, test } from "@jest/globals";
-import { getDomainFromUrl } from "@shared/utils/domain";
+import { getDomainFromUrl } from "@shared/utils";
 
 describe("getDomainFromUrl", () => {
   test("extracts domain and strips www", () => {

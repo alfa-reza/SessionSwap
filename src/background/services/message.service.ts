@@ -1,14 +1,13 @@
 import { SessionHandler } from "@background/handlers/session.handler";
-import { MESSAGE_ACTIONS } from "@shared/constants/messages";
-import { REQUIRED_PERMISSIONS } from "@shared/constants/requiredPermission";
+import { MESSAGE_ACTIONS } from "@shared/constants";
 import { MessageType, SendResponseType, StoredSession } from "@shared/types";
-import { handleError } from "@shared/utils/errorHandling";
+import { handleError } from "@shared/utils";
 
 export class MessageService {
   private sessionHandler = new SessionHandler();
 
   handleMessage(message: MessageType, _: chrome.runtime.MessageSender, sendResponse: SendResponseType): boolean {
-    this.checkPermissions()
+    this.checkOriginPermissions()
       .then(() => {
         return this.processMessage(message, sendResponse);
       })
@@ -20,32 +19,8 @@ export class MessageService {
     return true;
   }
 
-  private async checkPermissions(): Promise<void> {
-    try {
-      const permissions = await chrome.permissions.getAll();
-
-      this.validateRequiredPermissions(permissions);
-      this.validateOriginPermissions(permissions);
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  private validateRequiredPermissions(permissions: chrome.permissions.Permissions): void {
-    for (const permission of REQUIRED_PERMISSIONS) {
-      if (!permissions.permissions?.includes(permission)) {
-        throw new Error("Data access permission is required.");
-      }
-    }
-  }
-
-  private validateOriginPermissions(permissions: chrome.permissions.Permissions): void {
-    const origins = permissions.origins || [];
-
-    if (origins.length === 0) {
-      throw new Error("Data access permission is required.");
-    }
-
+  private async checkOriginPermissions(): Promise<void> {
+    const { origins = [] } = await chrome.permissions.getAll();
     const hasBroadAccess = origins.some(
       (origin) => origin === "<all_urls>" || origin === "*://*/*" || origin === "http://*/*" || origin === "https://*/*"
     );

@@ -2,34 +2,9 @@ import { StorageData } from "@shared/types";
 
 export function extractStorageData(): StorageData {
   try {
-    const localStorageData: Record<string, string> = {};
-    const sessionStorageData: Record<string, string> = {};
-
-    // Extract localStorage
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key) {
-        const value = localStorage.getItem(key);
-        if (value !== null) {
-          localStorageData[key] = value;
-        }
-      }
-    }
-
-    // Extract sessionStorage
-    for (let i = 0; i < sessionStorage.length; i++) {
-      const key = sessionStorage.key(i);
-      if (key) {
-        const value = sessionStorage.getItem(key);
-        if (value !== null) {
-          sessionStorageData[key] = value;
-        }
-      }
-    }
-
     return {
-      localStorage: localStorageData,
-      sessionStorage: sessionStorageData,
+      localStorage: { ...localStorage },
+      sessionStorage: { ...sessionStorage },
     };
   } catch (error) {
     console.error("Error extracting storage data:", error);

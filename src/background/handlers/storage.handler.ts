@@ -1,6 +1,6 @@
 import { clearStorage, extractStorageData, injectStorageData } from "@background/services/storageData.service";
 import { StorageData } from "@shared/types";
-import { ExtensionError } from "@shared/utils/errorHandling";
+import { ExtensionError } from "@shared/utils";
 
 export class StorageHandler {
   async getStorageData(tabId: number): Promise<StorageData> {

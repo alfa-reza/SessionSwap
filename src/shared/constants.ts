@@ -3,3 +3,8 @@ export const MESSAGE_ACTIONS = {
   SWITCH_SESSION: "switchSession",
   CLEAR_SESSION: "clearSession",
 } as const;
+
+export const STORAGE_KEYS = {
+  SESSIONS: "sessions",
+  ACTIVE_SESSIONS: "activeSessions",
+} as const;

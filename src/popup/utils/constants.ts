@@ -9,10 +9,5 @@ export const CSS_CLASSES = {
 
 export const UI_TEXT = {
   NO_SESSIONS: "No sessions saved for this site",
-  UNNAMED_SESSION: "Unnamed Session",
   LAST_USED: "Last used:",
-  LOADING: "Loading...",
-  SAVE_SUCCESS: "Session saved successfully",
-  SWITCH_SUCCESS: "Session switched successfully",
-  DELETE_SUCCESS: "Session deleted successfully",
 } as const;

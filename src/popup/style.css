@@ -219,10 +219,6 @@ body {
   background: #f8fff9;
 }
 
-.session-item.active::before {
-  color: #28a745;
-}
-
 .session-info {
   flex: 1;
 }

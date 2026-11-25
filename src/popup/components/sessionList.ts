@@ -1,7 +1,7 @@
 import { CSS_CLASSES, UI_TEXT } from "@popup/utils/constants";
 import { escapeHtml } from "@popup/utils/dom";
 import { ActiveSessions, SessionData } from "@shared/types";
-import { formatDate } from "@shared/utils/date";
+import { formatDate } from "@shared/utils";
 
 export class SessionList {
   private container: HTMLElement;

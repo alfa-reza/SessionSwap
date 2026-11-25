@@ -1,11 +1,6 @@
-import { storedSessionDefaultValue } from "@popup/utils/defaultValue";
-import { MESSAGE_ACTIONS } from "@shared/constants/messages";
-import { STORAGE_KEYS } from "@shared/constants/storageKeys";
+import { MESSAGE_ACTIONS, STORAGE_KEYS } from "@shared/constants";
 import { ExtensionStorage, PopupState, SessionData, StoredSession } from "@shared/types";
-import { getDomainFromUrl } from "@shared/utils/domain";
-import { ExtensionError, handleError } from "@shared/utils/errorHandling";
-import { generateId } from "@shared/utils/idGenerator";
-import { validateSessionName } from "@shared/utils/validation";
+import { ExtensionError, generateId, getDomainFromUrl, handleError, validateSessionName } from "@shared/utils";
 import { ChromeApiService } from "./chromeApi.service";
 
 export class PopupService {
@@ -49,7 +44,7 @@ export class PopupService {
         throw new ExtensionError(response.error || "Failed to get current session");
       }
 
-      const storedSession = response.data ?? storedSessionDefaultValue;
+      const storedSession = response.data ?? { cookies: [], localStorage: {}, sessionStorage: {} };
 
       const domainSessions = this.state.sessions.filter((s) => s.domain === this.state.currentDomain);
       const maxOrder = domainSessions.length > 0 ? Math.max(...domainSessions.map((s) => s.order ?? 0)) : -1;

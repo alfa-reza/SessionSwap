@@ -1,5 +1,4 @@
-import { getDomainFromUrl } from "@shared/utils/domain";
-import { handleError } from "@shared/utils/errorHandling";
+import { getDomainFromUrl, handleError } from "@shared/utils";
 import { LoadingManager } from "./components/loadingManager";
 import { ModalManager } from "./components/modalManager";
 import { SessionList } from "./components/sessionList";
