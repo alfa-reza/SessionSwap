@@ -6,6 +6,10 @@ export function extractDomain(hostname: string): string {
 export function getDomainFromUrl(url: string): string {
   try {
     const urlObj = new URL(url);
+    if (urlObj.protocol !== "http:" && urlObj.protocol !== "https:") {
+      return "";
+    }
+
     const domain = extractDomain(urlObj.hostname);
 
     const isLocalhost = domain === "localhost" || domain.startsWith("127.");
@@ -17,7 +21,6 @@ export function getDomainFromUrl(url: string): string {
 
     return domain;
   } catch (_) {
-    console.error("Invalid URL:", url);
     return "";
   }
 }

@@ -1,18 +1,20 @@
 export class CookieHandler {
   async getCookiesForDomain(domain: string): Promise<chrome.cookies.Cookie[]> {
     try {
+      const currentDomain = domain.split(":")[0];
+      if (!currentDomain) return [];
+
       const stores = await chrome.cookies.getAllCookieStores();
       const allCookies: chrome.cookies.Cookie[] = [];
-      const currentDomain = domain.split(":")[0];
 
       for (const store of stores) {
-        const cookies = await chrome.cookies.getAll({ storeId: store.id });
+        const cookies = await chrome.cookies.getAll({ domain: currentDomain, storeId: store.id });
         const domainCookies = cookies.filter((cookie) => {
           const slicedCookieDomain = cookie.domain.startsWith(".") ? cookie.domain.slice(1) : cookie.domain;
           return (
             slicedCookieDomain === currentDomain ||
             slicedCookieDomain === `www.${currentDomain}` ||
-            currentDomain.endsWith(slicedCookieDomain)
+            currentDomain.endsWith(`.${slicedCookieDomain}`)
           );
         });
         allCookies.push(...domainCookies);
@@ -58,15 +60,12 @@ export class CookieHandler {
   }
 
   private buildCookieUrl(cookie: chrome.cookies.Cookie, fallbackDomain?: string): string {
-    const protocol = cookie.secure ? "https" : "http";
-    let domain = cookie.domain;
-
-    if (domain.startsWith(".")) {
-      domain = domain.slice(1);
-    }
+    const isSecureCookie = cookie.secure || cookie.name.startsWith("__Host-") || cookie.name.startsWith("__Secure-");
+    const protocol = isSecureCookie ? "https" : "http";
+    let domain = cookie.domain.startsWith(".") ? cookie.domain.slice(1) : cookie.domain;
 
     if (!domain && fallbackDomain) {
-      domain = fallbackDomain;
+      domain = fallbackDomain.split(":")[0];
     }
 
     if (!domain) {
@@ -79,18 +78,19 @@ export class CookieHandler {
 
   private prepareCookieForRestore(cookie: chrome.cookies.Cookie, fallbackDomain: string): chrome.cookies.SetDetails {
     const url = this.buildCookieUrl(cookie, fallbackDomain);
+    const isHostPrefix = cookie.name.startsWith("__Host-");
 
     const cookieDetails: chrome.cookies.SetDetails = {
       url,
       name: cookie.name,
       value: cookie.value,
-      path: cookie.path,
-      secure: cookie.secure,
+      path: isHostPrefix ? "/" : cookie.path,
+      secure: isHostPrefix ? true : cookie.secure,
       httpOnly: cookie.httpOnly,
       storeId: cookie.storeId,
     };
 
-    if (cookie.domain && cookie.domain.startsWith(".")) {
+    if (!isHostPrefix && !cookie.hostOnly && cookie.domain && cookie.domain.startsWith(".")) {
       cookieDetails.domain = cookie.domain;
     }
 
@@ -100,6 +100,10 @@ export class CookieHandler {
 
     if (cookie.sameSite && cookie.sameSite !== "unspecified") {
       cookieDetails.sameSite = cookie.sameSite;
+    }
+
+    if ("partitionKey" in cookie && cookie.partitionKey) {
+      (cookieDetails as chrome.cookies.SetDetails & { partitionKey?: unknown }).partitionKey = cookie.partitionKey;
     }
 
     return cookieDetails;

@@ -35,7 +35,10 @@ class PopupController {
         return await this.popupService.initialize();
       });
 
-      this.currentSiteElement.textContent = state.currentDomain;
+      const hasValidDomain = state.currentDomain.length > 0;
+      this.currentSiteElement.textContent = hasValidDomain ? state.currentDomain : "Unsupported page";
+      this.saveBtn.disabled = !hasValidDomain;
+      this.newSessionBtn.disabled = !hasValidDomain;
       this.renderSessionsList();
     } catch (error) {
       this.showError(handleError(error, "PopupController.initialize"));
@@ -197,12 +200,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   };
 
   const tabUpdatedListener = async (_: number, changeInfo: chrome.tabs.TabChangeInfo, tab: chrome.tabs.Tab) => {
-    if (changeInfo.status === "complete" && tab.url) {
-      const newDomain = getDomainFromUrl(tab.url);
-      if (newDomain !== currentDomain) {
-        currentDomain = newDomain;
-        await controller.initialize();
-      }
+    if (!tab.active || changeInfo.status !== "complete" || !tab.url) return;
+
+    const newDomain = getDomainFromUrl(tab.url);
+    if (newDomain !== currentDomain) {
+      currentDomain = newDomain;
+      await controller.initialize();
     }
   };
 
