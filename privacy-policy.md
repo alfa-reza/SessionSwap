@@ -16,4 +16,4 @@ The extension uses browser permissions like `cookies`, `storage`, and `scripting
 
 ## Contact
 
-If you have questions or concerns, please contact me via fanespra@gmail.com.
+If you have questions or concerns, please contact me via research@alfareza.my.id.
