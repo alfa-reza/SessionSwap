@@ -1,11 +1,56 @@
 import { STORAGE_KEYS } from "@shared/constants";
+import { DEFAULT_SETTINGS, ExtensionStorage } from "@shared/types";
+import { getDomainFromUrl } from "@shared/utils";
 import { MessageService } from "./services/message.service";
 
 const messageService = new MessageService();
 
+async function updateTabBadge(tabId: number, url?: string): Promise<void> {
+  if (!chrome.action?.setBadgeText) return;
+
+  try {
+    const domain = url ? getDomainFromUrl(url) : "";
+    if (!domain) {
+      await chrome.action.setBadgeText({ tabId, text: "" });
+      return;
+    }
+
+    const storage = (await chrome.storage.local.get([
+      STORAGE_KEYS.SESSIONS,
+      STORAGE_KEYS.SETTINGS,
+    ])) as ExtensionStorage;
+
+    const showBadge = storage.settings?.showBadge ?? DEFAULT_SETTINGS.showBadge;
+    if (!showBadge) {
+      await chrome.action.setBadgeText({ tabId, text: "" });
+      return;
+    }
+
+    const count = (storage.sessions || []).filter((s) => s.domain === domain).length;
+    await chrome.action.setBadgeText({ tabId, text: count > 0 ? String(count) : "" });
+    if (count > 0 && chrome.action.setBadgeBackgroundColor) {
+      await chrome.action.setBadgeBackgroundColor({ tabId, color: "#2563eb" });
+    }
+  } catch {
+    // Ignore badge errors on closed/restricted tabs
+  }
+}
+
+async function refreshActiveTabBadge(): Promise<void> {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id !== undefined) {
+      await updateTabBadge(tab.id, tab.url);
+    }
+  } catch {
+    // Ignore if tabs are unavailable
+  }
+}
+
 // Extension startup
 chrome.runtime.onStartup.addListener(() => {
   console.log("SessionSwap extension started");
+  void refreshActiveTabBadge();
 });
 
 // Extension install/update
@@ -17,6 +62,28 @@ chrome.runtime.onInstalled.addListener((details) => {
       [STORAGE_KEYS.SESSIONS]: [],
       [STORAGE_KEYS.ACTIVE_SESSIONS]: {},
     });
+  }
+  void refreshActiveTabBadge();
+});
+
+chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    await updateTabBadge(tabId, tab.url);
+  } catch {
+    // Tab may have closed
+  }
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (tab.active && (changeInfo.status === "complete" || changeInfo.url)) {
+    void updateTabBadge(tabId, tab.url);
+  }
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && (changes[STORAGE_KEYS.SESSIONS] || changes[STORAGE_KEYS.SETTINGS])) {
+    void refreshActiveTabBadge();
   }
 });
 

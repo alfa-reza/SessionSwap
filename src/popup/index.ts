@@ -1,4 +1,4 @@
-import { ThemePreference } from "@shared/types";
+import { DEFAULT_SETTINGS, ExtensionSettings, ThemePreference } from "@shared/types";
 import { formatDate, getDomainFromUrl, handleError } from "@shared/utils";
 import { LoadingManager } from "./components/loadingManager";
 import { ModalManager } from "./components/modalManager";
@@ -28,7 +28,14 @@ class PopupController {
   private clearSiteSessionsBtn: HTMLButtonElement;
   private settingsStatusEl: HTMLElement;
   private importBackupInput: HTMLInputElement;
+  private mainSearchInput: HTMLInputElement;
+  private allSessionsSearchWrap: HTMLElement;
+  private allSessionsSearchInput: HTMLInputElement;
+  private settingAutoReload: HTMLInputElement;
+  private settingShowBadge: HTMLInputElement;
+  private settingAutoClose: HTMLInputElement;
   private restoreMode: "merge" | "replace" = "merge";
+  private settings: ExtensionSettings = { ...DEFAULT_SETTINGS };
   private tabFavicons = new Map<string, string>();
   private collapsedDomains = new Set<string>();
 
@@ -48,6 +55,12 @@ class PopupController {
     this.clearSiteSessionsBtn = getElementByIdSafe("clearSiteSessionsBtn");
     this.settingsStatusEl = getElementByIdSafe("settingsStatus");
     this.importBackupInput = getElementByIdSafe("importBackupInput");
+    this.mainSearchInput = getElementByIdSafe("mainSearchInput");
+    this.allSessionsSearchWrap = getElementByIdSafe("allSessionsSearchWrap");
+    this.allSessionsSearchInput = getElementByIdSafe("allSessionsSearchInput");
+    this.settingAutoReload = getElementByIdSafe("settingAutoReload");
+    this.settingShowBadge = getElementByIdSafe("settingShowBadge");
+    this.settingAutoClose = getElementByIdSafe("settingAutoClose");
 
     // Initialize session list
     this.sessionList = new SessionList(getElementByIdSafe("sessionsList"));
@@ -59,14 +72,16 @@ class PopupController {
     try {
       this.modalManager.hideAllModals();
       this.setActiveView("main");
-      const [theme, state] = await Promise.all([
+      const [theme, settings, state] = await Promise.all([
         this.popupService.getTheme(),
+        this.popupService.getSettings(),
         this.loadingManager.withLoading(async () => {
           return await this.popupService.initialize();
         }),
       ]);
 
       this.applyTheme(theme);
+      this.applySettings(settings);
 
       const hasValidDomain = state.currentDomain.length > 0;
       this.currentSiteElement.textContent = hasValidDomain ? state.currentDomain : "Unsupported page";
@@ -120,6 +135,18 @@ class PopupController {
         this.updateSegmentedState("[data-restore-mode]", "restoreMode", this.restoreMode);
       });
     });
+
+    this.mainSearchInput.addEventListener("input", () => this.renderSessionsList());
+    this.allSessionsSearchInput.addEventListener("input", () => this.renderAllSessionsList());
+
+    const bindToggle = (el: HTMLInputElement, key: keyof ExtensionSettings) => {
+      el.addEventListener("change", async () => {
+        this.settings = await this.popupService.updateSettings({ [key]: el.checked });
+      });
+    };
+    bindToggle(this.settingAutoReload, "autoReload");
+    bindToggle(this.settingShowBadge, "showBadge");
+    bindToggle(this.settingAutoClose, "autoClosePopup");
   }
 
   private setupSessionListHandlers(): void {
@@ -138,9 +165,10 @@ class PopupController {
   private async handleConfirmSave(): Promise<void> {
     try {
       const name = this.modalManager.getSaveModalInput();
+      const color = this.modalManager.getSaveModalColor();
 
       await this.loadingManager.withLoading(async () => {
-        await this.popupService.saveCurrentSession(name);
+        await this.popupService.saveCurrentSession(name, color);
       });
 
       this.modalManager.hideSaveModal();
@@ -169,6 +197,9 @@ class PopupController {
       });
 
       this.renderSessionsList();
+      if (this.settings.autoClosePopup) {
+        window.close();
+      }
     } catch (error) {
       this.showError(handleError(error, "switch session"));
     }
@@ -178,17 +209,18 @@ class PopupController {
     const session = this.popupService.getSession(sessionId);
     if (session) {
       this.popupService.setState({ currentRenameSessionId: sessionId });
-      this.modalManager.showRenameModal(session.name);
+      this.modalManager.showRenameModal(session.name, session.color);
     }
   }
 
   private async handleConfirmRename(): Promise<void> {
     try {
       const newName = this.modalManager.getRenameModalInput();
+      const color = this.modalManager.getRenameModalColor();
       const sessionId = this.popupService.getState().currentRenameSessionId;
 
       if (newName && sessionId) {
-        await this.popupService.renameSession(sessionId, newName);
+        await this.popupService.renameSession(sessionId, newName, color);
         this.renderSessionsList();
         if (!this.allSessionsView.hidden) {
           this.renderAllSessionsList();
@@ -290,7 +322,9 @@ class PopupController {
   private renderAllSessionsList(): void {
     const { sessions, activeSessions, currentDomain } = this.popupService.getState();
 
+    this.allSessionsSearchWrap.hidden = sessions.length === 0;
     if (sessions.length === 0) {
+      this.allSessionsSearchInput.value = "";
       this.allSessionsSummary.textContent = "";
       const emptyEl = document.createElement("div");
       emptyEl.className = "no-sessions";
@@ -299,8 +333,22 @@ class PopupController {
       return;
     }
 
+    const query = this.allSessionsSearchInput.value.trim().toLowerCase();
+    const filteredSessions = query
+      ? sessions.filter((s) => s.name.toLowerCase().includes(query) || s.domain.toLowerCase().includes(query))
+      : sessions;
+
+    if (filteredSessions.length === 0) {
+      this.allSessionsSummary.textContent = "0 matches";
+      const noMatchEl = document.createElement("div");
+      noMatchEl.className = "no-sessions";
+      noMatchEl.textContent = "No matching sessions";
+      this.allSessionsList.replaceChildren(noMatchEl);
+      return;
+    }
+
     const grouped = new Map<string, typeof sessions>();
-    for (const session of sessions) {
+    for (const session of filteredSessions) {
       const list = grouped.get(session.domain) ?? [];
       list.push(session);
       grouped.set(session.domain, list);
@@ -312,7 +360,7 @@ class PopupController {
       return a.localeCompare(b);
     });
 
-    this.allSessionsSummary.textContent = `${domains.length} site${domains.length === 1 ? "" : "s"} · ${sessions.length}`;
+    this.allSessionsSummary.textContent = `${domains.length} site${domains.length === 1 ? "" : "s"} · ${filteredSessions.length}`;
 
     this.allSessionsList.innerHTML = domains
       .map((domain) => {
@@ -333,7 +381,7 @@ class PopupController {
                 <div class="session-info">
                   <div class="session-name-row">
                     <span class="active-badge" aria-hidden="true"></span>
-                    <span class="session-name">${escapeHtml(session.name)}</span>
+                    <span class="session-name"${session.color ? ` data-color="${escapeHtml(session.color)}"` : ""}>${escapeHtml(session.name)}</span>
                   </div>
                   <div class="session-meta">Last used ${formatDate(session.lastUsed)}</div>
                 </div>
@@ -501,9 +549,21 @@ class PopupController {
     }
   }
 
+  private applySettings(settings: ExtensionSettings): void {
+    this.settings = settings;
+    this.settingAutoReload.checked = settings.autoReload;
+    this.settingShowBadge.checked = settings.showBadge;
+    this.settingAutoClose.checked = settings.autoClosePopup;
+  }
+
   private renderSessionsList(): void {
     const state = this.popupService.getState();
-    this.sessionList.render(state.sessions, state.activeSessions, state.currentDomain);
+    const siteSessionCount = state.sessions.filter((s) => s.domain === state.currentDomain).length;
+    this.mainSearchInput.hidden = siteSessionCount < 4;
+    if (siteSessionCount < 4) {
+      this.mainSearchInput.value = "";
+    }
+    this.sessionList.render(state.sessions, state.activeSessions, state.currentDomain, this.mainSearchInput.value);
   }
 
   private showError(message: string): void {

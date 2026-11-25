@@ -141,7 +141,17 @@
         </div>
 
         <section class="sessions-section" aria-label="Saved sessions">
-          <h2 class="section-title">Saved Sessions</h2>
+          <div class="section-header">
+            <h2 class="section-title">Saved Sessions</h2>
+            <input
+              id="mainSearchInput"
+              class="search-input"
+              type="search"
+              placeholder="Search..."
+              aria-label="Search site sessions"
+              hidden
+            />
+          </div>
           <div id="sessionsList" class="sessions-list">
             <div class="no-sessions">No sessions saved for this site</div>
           </div>
@@ -181,6 +191,31 @@
                 Dark
               </button>
             </div>
+          </div>
+
+          <div class="settings-group">
+            <span class="settings-label">Behavior</span>
+            <label class="setting-toggle-row" for="settingAutoReload">
+              <span class="setting-toggle-text">
+                <span class="setting-toggle-title">Reload tab on switch</span>
+                <span class="setting-toggle-desc">Refresh page after switching or clearing</span>
+              </span>
+              <input id="settingAutoReload" class="toggle-input" type="checkbox" checked />
+            </label>
+            <label class="setting-toggle-row" for="settingShowBadge">
+              <span class="setting-toggle-text">
+                <span class="setting-toggle-title">Toolbar count badge</span>
+                <span class="setting-toggle-desc">Show saved sessions count for active site</span>
+              </span>
+              <input id="settingShowBadge" class="toggle-input" type="checkbox" checked />
+            </label>
+            <label class="setting-toggle-row" for="settingAutoClose">
+              <span class="setting-toggle-text">
+                <span class="setting-toggle-title">Close popup after switch</span>
+                <span class="setting-toggle-desc">Automatically close popup on session click</span>
+              </span>
+              <input id="settingAutoClose" class="toggle-input" type="checkbox" />
+            </label>
           </div>
 
           <div class="settings-group">
@@ -263,6 +298,16 @@
           <span id="allSessionsSummary" class="subview-meta"></span>
         </div>
 
+        <div class="all-sessions-search-wrap" id="allSessionsSearchWrap" hidden>
+          <input
+            id="allSessionsSearchInput"
+            class="search-input"
+            type="search"
+            placeholder="Filter by site or session..."
+            aria-label="Filter all sessions"
+          />
+        </div>
+
         <div id="allSessionsList" class="all-sessions-body"></div>
       </section>
     </div>
@@ -277,6 +322,59 @@
         <div class="modal-body">
           <label for="sessionName">Session Name</label>
           <input type="text" id="sessionName" placeholder="e.g. Work, Personal" value="Unnamed Session" />
+          <div class="modal-field">
+            <span class="modal-field-label">Color Tag</span>
+            <div id="saveColorPicker" class="color-picker" role="radiogroup" aria-label="Session color">
+              <button
+                type="button"
+                class="color-swatch"
+                data-color=""
+                role="radio"
+                aria-checked="true"
+                title="Default"
+              ></button>
+              <button
+                type="button"
+                class="color-swatch"
+                data-color="blue"
+                role="radio"
+                aria-checked="false"
+                title="Blue"
+              ></button>
+              <button
+                type="button"
+                class="color-swatch"
+                data-color="green"
+                role="radio"
+                aria-checked="false"
+                title="Green"
+              ></button>
+              <button
+                type="button"
+                class="color-swatch"
+                data-color="amber"
+                role="radio"
+                aria-checked="false"
+                title="Amber"
+              ></button>
+              <button
+                type="button"
+                class="color-swatch"
+                data-color="rose"
+                role="radio"
+                aria-checked="false"
+                title="Rose"
+              ></button>
+              <button
+                type="button"
+                class="color-swatch"
+                data-color="purple"
+                role="radio"
+                aria-checked="false"
+                title="Purple"
+              ></button>
+            </div>
+          </div>
         </div>
         <div class="modal-footer">
           <button id="cancelSave" class="btn btn-secondary" type="button">Cancel</button>
@@ -294,6 +392,59 @@
         <div class="modal-body">
           <label for="newSessionName">New Name</label>
           <input type="text" id="newSessionName" placeholder="Enter session name" />
+          <div class="modal-field">
+            <span class="modal-field-label">Color Tag</span>
+            <div id="renameColorPicker" class="color-picker" role="radiogroup" aria-label="Session color">
+              <button
+                type="button"
+                class="color-swatch"
+                data-color=""
+                role="radio"
+                aria-checked="true"
+                title="Default"
+              ></button>
+              <button
+                type="button"
+                class="color-swatch"
+                data-color="blue"
+                role="radio"
+                aria-checked="false"
+                title="Blue"
+              ></button>
+              <button
+                type="button"
+                class="color-swatch"
+                data-color="green"
+                role="radio"
+                aria-checked="false"
+                title="Green"
+              ></button>
+              <button
+                type="button"
+                class="color-swatch"
+                data-color="amber"
+                role="radio"
+                aria-checked="false"
+                title="Amber"
+              ></button>
+              <button
+                type="button"
+                class="color-swatch"
+                data-color="rose"
+                role="radio"
+                aria-checked="false"
+                title="Rose"
+              ></button>
+              <button
+                type="button"
+                class="color-swatch"
+                data-color="purple"
+                role="radio"
+                aria-checked="false"
+                title="Purple"
+              ></button>
+            </div>
+          </div>
         </div>
         <div class="modal-footer">
           <button id="cancelRename" class="btn btn-secondary" type="button">Cancel</button>

@@ -599,5 +599,36 @@ describe("PopupService", () => {
       expect(state.sessions.map((s) => s.id)).toEqual(["1"]);
       expect(state.activeSessions).toEqual({ "example.com": "1" });
     });
+
+    test("getSettings and updateSettings persist behavior preferences", async () => {
+      const { setStorageData } = setupMockChromeApi({
+        getStorageData: async () => ({ settings: { autoReload: false } }),
+      });
+
+      const service = new PopupService();
+      const initial = await service.getSettings();
+      expect(initial).toEqual({ autoReload: false, showBadge: true, autoClosePopup: false });
+
+      const updated = await service.updateSettings({ autoClosePopup: true });
+      expect(updated.autoClosePopup).toBe(true);
+      expect(setStorageData).toHaveBeenCalledWith({
+        settings: { autoReload: false, showBadge: true, autoClosePopup: true },
+      });
+    });
+
+    test("renameSession updates optional color tag", async () => {
+      const sessions = [makeSession("1", "Work")];
+      setupMockChromeApi({
+        getStorageData: async () => ({ sessions, activeSessions: {} }),
+      });
+
+      const service = new PopupService();
+      await service.initialize();
+      await service.renameSession("1", "Work", "blue");
+      expect(service.getSession("1")?.color).toBe("blue");
+
+      await service.renameSession("1", "Work");
+      expect(service.getSession("1")?.color).toBeUndefined();
+    });
   });
 });

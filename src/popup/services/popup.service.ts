@@ -1,9 +1,12 @@
 import { MESSAGE_ACTIONS, STORAGE_KEYS } from "@shared/constants";
 import {
   ActiveSessions,
+  DEFAULT_SETTINGS,
+  ExtensionSettings,
   ExtensionStorage,
   PopupState,
   SessionBackup,
+  SessionColor,
   SessionData,
   StoredSession,
   ThemePreference,
@@ -38,7 +41,7 @@ export class PopupService {
     }
   }
 
-  async saveCurrentSession(name: string): Promise<SessionData> {
+  async saveCurrentSession(name: string, color?: SessionColor): Promise<SessionData> {
     try {
       const validatedName = validateSessionName(name);
 
@@ -65,6 +68,7 @@ export class PopupService {
         createdAt: Date.now(),
         lastUsed: Date.now(),
         order: maxOrder + 1,
+        ...(color ? { color } : {}),
       };
 
       this.state.sessions.push(newSession);
@@ -122,7 +126,7 @@ export class PopupService {
     }
   }
 
-  async renameSession(sessionId: string, newName: string): Promise<void> {
+  async renameSession(sessionId: string, newName: string, color?: SessionColor): Promise<void> {
     try {
       const session = this.state.sessions.find((s) => s.id === sessionId);
       if (!session) {
@@ -130,6 +134,11 @@ export class PopupService {
       }
 
       session.name = validateSessionName(newName);
+      if (color) {
+        session.color = color;
+      } else {
+        delete session.color;
+      }
       await this.saveStorageData();
     } catch (error) {
       throw new ExtensionError(handleError(error, "PopupService.renameSession"));
@@ -203,6 +212,22 @@ export class PopupService {
 
   async setTheme(theme: ThemePreference): Promise<void> {
     await this.chromeApi.setStorageData({ [STORAGE_KEYS.THEME]: theme });
+  }
+
+  async getSettings(): Promise<ExtensionSettings> {
+    try {
+      const result = await this.chromeApi.getStorageData<ExtensionStorage>([STORAGE_KEYS.SETTINGS]);
+      return { ...DEFAULT_SETTINGS, ...(result[STORAGE_KEYS.SETTINGS] || {}) };
+    } catch {
+      return { ...DEFAULT_SETTINGS };
+    }
+  }
+
+  async updateSettings(patch: Partial<ExtensionSettings>): Promise<ExtensionSettings> {
+    const current = await this.getSettings();
+    const next = { ...current, ...patch };
+    await this.chromeApi.setStorageData({ [STORAGE_KEYS.SETTINGS]: next });
+    return next;
   }
 
   exportBackup(): SessionBackup {

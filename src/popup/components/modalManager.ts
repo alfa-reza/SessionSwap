@@ -1,5 +1,6 @@
 import { CSS_CLASSES } from "@popup/utils/constants";
 import { getElementByIdSafe } from "@popup/utils/dom";
+import { SessionColor } from "@shared/types";
 import { ModalList, ModalInputs } from "@shared/types/modal.types";
 
 export class ModalManager {
@@ -76,17 +77,30 @@ export class ModalManager {
         if (e.target === modal) this.hide(key as keyof ModalList);
       });
     });
+
+    // Color swatch pickers inside save & rename modals
+    document.querySelectorAll<HTMLButtonElement>(".color-swatch").forEach((swatch) => {
+      swatch.addEventListener("click", () => {
+        const picker = swatch.closest(".color-picker");
+        if (!picker) return;
+        picker.querySelectorAll<HTMLButtonElement>(".color-swatch").forEach((btn) => {
+          btn.setAttribute("aria-checked", String(btn === swatch));
+        });
+      });
+    });
   }
 
   showSaveModal(defaultName: string = "Unnamed Session"): void {
     this.inputs.sessionName.value = defaultName;
+    this.setPickerColor("saveColorPicker");
     this.show("save");
     this.inputs.sessionName.focus();
     this.inputs.sessionName.select();
   }
 
-  showRenameModal(currentName: string): void {
+  showRenameModal(currentName: string, currentColor?: SessionColor): void {
     this.inputs.newSessionName.value = currentName;
+    this.setPickerColor("renameColorPicker", currentColor);
     this.show("rename");
     this.inputs.newSessionName.focus();
     this.inputs.newSessionName.select();
@@ -114,8 +128,31 @@ export class ModalManager {
     return this.inputs.sessionName.value.trim();
   }
 
+  getSaveModalColor(): SessionColor | undefined {
+    return this.getPickerColor("saveColorPicker");
+  }
+
   getRenameModalInput(): string {
     return this.inputs.newSessionName.value.trim();
+  }
+
+  getRenameModalColor(): SessionColor | undefined {
+    return this.getPickerColor("renameColorPicker");
+  }
+
+  private setPickerColor(pickerId: string, color?: SessionColor): void {
+    const picker = document.getElementById(pickerId);
+    if (!picker) return;
+    const targetValue = color ?? "";
+    picker.querySelectorAll<HTMLButtonElement>(".color-swatch").forEach((btn) => {
+      btn.setAttribute("aria-checked", String((btn.dataset.color ?? "") === targetValue));
+    });
+  }
+
+  private getPickerColor(pickerId: string): SessionColor | undefined {
+    const selected = document.querySelector<HTMLButtonElement>(`#${pickerId} .color-swatch[aria-checked="true"]`);
+    const color = selected?.dataset.color;
+    return color ? (color as SessionColor) : undefined;
   }
 
   hideSaveModal(): void {

@@ -35,7 +35,7 @@ export class SessionList {
     this.onReorder = handlers.onReorder;
   }
 
-  render(sessions: SessionData[], activeSessions: ActiveSessions, currentDomain: string): void {
+  render(sessions: SessionData[], activeSessions: ActiveSessions, currentDomain: string, searchQuery = ""): void {
     const domainSessions = sessions
       .filter((s) => s.domain === currentDomain)
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -46,11 +46,23 @@ export class SessionList {
       return;
     }
 
-    this.renderSessions(domainSessions, activeSessionId);
+    const query = searchQuery.trim().toLowerCase();
+    const filtered = query ? domainSessions.filter((s) => s.name.toLowerCase().includes(query)) : domainSessions;
+
+    if (filtered.length === 0) {
+      this.renderNoMatchesState();
+      return;
+    }
+
+    this.renderSessions(filtered, activeSessionId);
   }
 
   private renderEmptyState(): void {
     this.container.innerHTML = `<div class="${CSS_CLASSES.NO_SESSIONS}">${UI_TEXT.NO_SESSIONS}</div>`;
+  }
+
+  private renderNoMatchesState(): void {
+    this.container.innerHTML = `<div class="${CSS_CLASSES.NO_SESSIONS}">No matching sessions</div>`;
   }
 
   private renderSessions(sessions: SessionData[], activeSessionId?: string): void {
@@ -76,7 +88,7 @@ export class SessionList {
           <div class="session-info">
             <div class="session-name-row">
               <span class="active-badge" aria-hidden="true"></span>
-              <span class="session-name">${escapeHtml(session.name)}</span>
+              <span class="session-name"${session.color ? ` data-color="${escapeHtml(session.color)}"` : ""}>${escapeHtml(session.name)}</span>
             </div>
             <div class="session-meta">${UI_TEXT.LAST_USED} ${lastUsed}</div>
           </div>

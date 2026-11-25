@@ -315,16 +315,23 @@ async function runE2E() {
     assert.deepEqual(remaining, ["Alice"]);
     await closePopup();
 
-    // 8. Settings: theme persistence, clear site sessions, and JSON restore
+    // 8. Settings: theme persistence, behavior toggles, clear site sessions, and JSON restore
     await withPopup(`
       doc.getElementById('settingsBtn').click();
       doc.querySelector('[data-theme-option="dark"]').click();
+      doc.getElementById('settingAutoClose').click();
     `);
     await Bun.sleep(200);
     await closePopup();
 
-    const persistedTheme = await withPopup<string>("return doc.documentElement.dataset.theme;");
-    assert.equal(persistedTheme, "dark");
+    const persistedSettings = await withPopup<{ theme: string; autoClose: boolean }>(`
+      return {
+        theme: doc.documentElement.dataset.theme,
+        autoClose: doc.getElementById('settingAutoClose').checked,
+      };
+    `);
+    assert.equal(persistedSettings.theme, "dark");
+    assert.equal(persistedSettings.autoClose, true);
     await closePopup();
 
     // Clear all site sessions via Settings -> confirmDelete
@@ -369,19 +376,31 @@ async function runE2E() {
     `);
     await Bun.sleep(400);
     const restoreRes = await m.cmd<{
-      value: { status: string; viewHeight: number; scrollHeight: number; names: string[] };
+      value: {
+        status: string;
+        viewHeight: number;
+        popupHeight: number;
+        settingsBodyScrollable: boolean;
+        names: string[];
+      };
     }>("WebDriver:ExecuteScript", {
       script: `
           const pb = Array.from(document.querySelectorAll('browser')).find((b) => (b.currentURI?.spec || '').includes('popup/index.html'));
           const doc = pb.contentDocument;
           const view = doc.getElementById('settingsView');
+          const body = doc.querySelector('.settings-body');
           const viewHeight = view.getBoundingClientRect().height;
+          const popupHeight = doc.documentElement.clientHeight;
+          const overflowY = doc.defaultView.getComputedStyle(body).overflowY;
+          body.scrollTop = body.scrollHeight;
+          const settingsBodyScrollable = overflowY === 'auto' && (body.scrollHeight <= body.clientHeight || body.scrollTop > 0);
           const status = doc.getElementById('settingsStatus').textContent;
           doc.getElementById('settingsBackBtn').click();
           return {
             status,
             viewHeight,
-            scrollHeight: doc.documentElement.scrollHeight,
+            popupHeight,
+            settingsBodyScrollable,
             names: Array.from(doc.querySelectorAll('.session-item .session-name')).map((e) => e.textContent),
           };
         `,
@@ -391,6 +410,11 @@ async function runE2E() {
       restoreRes.value.viewHeight > 200,
       `Expected full settings view height, got ${restoreRes.value.viewHeight}`
     );
+    assert.ok(
+      restoreRes.value.popupHeight <= 580,
+      `Expected popup height <= 580px, got ${restoreRes.value.popupHeight}`
+    );
+    assert.equal(restoreRes.value.settingsBodyScrollable, true);
     assert.deepEqual(restoreRes.value.names, ["Restored Alice"]);
     await closePopup();
 
@@ -437,25 +461,39 @@ async function runE2E() {
     assert.equal(collapsedOpen.value.afterCollapse, false);
     assert.equal(collapsedOpen.value.afterExpand, true);
 
-    // Rename session from All Sessions view
+    // Rename session with color tag from All Sessions view & test search filter
     await m.cmd("WebDriver:ExecuteScript", {
       script: `
           const pb = Array.from(document.querySelectorAll('browser')).find((b) => (b.currentURI?.spec || '').includes('popup/index.html'));
           const doc = pb.contentDocument;
           doc.querySelector('#allSessionsList [data-action="rename"]').click();
           doc.getElementById('newSessionName').value = 'Alice Renamed';
+          doc.querySelector('#renameColorPicker [data-color="blue"]').click();
           doc.getElementById('confirmRename').click();
         `,
     });
     await Bun.sleep(200);
-    const renamedInAll = await m.cmd<{ value: string[] }>("WebDriver:ExecuteScript", {
-      script: `
+    const renamedInAll = await m.cmd<{ value: { names: string[]; hasBlueDot: boolean; noMatchText: string } }>(
+      "WebDriver:ExecuteScript",
+      {
+        script: `
           const pb = Array.from(document.querySelectorAll('browser')).find((b) => (b.currentURI?.spec || '').includes('popup/index.html'));
           const doc = pb.contentDocument;
-          return Array.from(doc.querySelectorAll('#allSessionsList .session-name')).map((e) => e.textContent);
+          const names = Array.from(doc.querySelectorAll('#allSessionsList .session-name')).map((e) => e.textContent);
+          const hasBlueDot = doc.querySelectorAll('#allSessionsList .session-name[data-color="blue"]').length === 1;
+          const search = doc.getElementById('allSessionsSearchInput');
+          search.value = 'zzznomatch';
+          search.dispatchEvent(new doc.defaultView.Event('input', { bubbles: true }));
+          const noMatchText = doc.getElementById('allSessionsList').textContent.trim();
+          search.value = '';
+          search.dispatchEvent(new doc.defaultView.Event('input', { bubbles: true }));
+          return { names, hasBlueDot, noMatchText };
         `,
-    });
-    assert.deepEqual(renamedInAll.value, ["Alice Renamed"]);
+      }
+    );
+    assert.deepEqual(renamedInAll.value.names, ["Alice Renamed"]);
+    assert.equal(renamedInAll.value.hasBlueDot, true);
+    assert.equal(renamedInAll.value.noMatchText, "No matching sessions");
 
     // Delete via trash icon -> requires confirmation modal
     await m.cmd("WebDriver:ExecuteScript", {
