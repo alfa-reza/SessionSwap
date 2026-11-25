@@ -60,6 +60,7 @@ export class PopupService {
       const domainSessions = this.state.sessions.filter((s) => s.domain === this.state.currentDomain);
       const maxOrder = domainSessions.length > 0 ? Math.max(...domainSessions.map((s) => s.order ?? 0)) : -1;
 
+      const faviconUrl = this.state.currentTab.favIconUrl;
       const newSession: SessionData = {
         ...storedSession,
         id: generateId(),
@@ -69,6 +70,7 @@ export class PopupService {
         lastUsed: Date.now(),
         order: maxOrder + 1,
         ...(color ? { color } : {}),
+        ...(faviconUrl ? { faviconUrl } : {}),
       };
 
       this.state.sessions.push(newSession);

@@ -54,6 +54,8 @@ describe("PopupService", () => {
 
     test("should save session with correct order when no existing sessions", async () => {
       const { setStorageData } = setupMockChromeApi({
+        getCurrentTab: async () =>
+          ({ id: 1, url: "https://example.com", favIconUrl: "https://example.com/favicon.ico" }) as chrome.tabs.Tab,
         sendMessage: async () => ({
           success: true,
           data: { cookies: [], localStorage: {}, sessionStorage: {} },
@@ -68,6 +70,7 @@ describe("PopupService", () => {
       expect(session.name).toBe("First Session");
       expect(session.order).toBe(0);
       expect(session.domain).toBe("example.com");
+      expect(session.faviconUrl).toBe("https://example.com/favicon.ico");
       expect(setStorageData).toHaveBeenCalled();
     });
 

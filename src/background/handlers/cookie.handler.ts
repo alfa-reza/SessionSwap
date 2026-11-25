@@ -1,30 +1,36 @@
 export class CookieHandler {
   async getCookiesForDomain(domain: string): Promise<chrome.cookies.Cookie[]> {
-    try {
-      const currentDomain = domain.split(":")[0];
-      if (!currentDomain) return [];
+    const currentDomain = domain.split(":")[0];
+    if (!currentDomain) return [];
 
-      const stores = await chrome.cookies.getAllCookieStores();
-      const allCookies: chrome.cookies.Cookie[] = [];
+    const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(currentDomain);
+    const parts = currentDomain.split(".");
+    const queryDomains =
+      !isIp && parts.length > 1 ? parts.slice(0, -1).map((_, i) => parts.slice(i).join(".")) : [currentDomain];
 
-      for (const store of stores) {
-        const cookies = await chrome.cookies.getAll({ domain: currentDomain, storeId: store.id });
-        const domainCookies = cookies.filter((cookie) => {
+    const stores = await chrome.cookies.getAllCookieStores();
+    const seen = new Map<string, chrome.cookies.Cookie>();
+
+    for (const store of stores) {
+      for (const queryDomain of queryDomains) {
+        const cookies = await chrome.cookies.getAll({ domain: queryDomain, storeId: store.id });
+        for (const cookie of cookies) {
           const slicedCookieDomain = cookie.domain.startsWith(".") ? cookie.domain.slice(1) : cookie.domain;
-          return (
+          const matchesDomain =
             slicedCookieDomain === currentDomain ||
             slicedCookieDomain === `www.${currentDomain}` ||
-            currentDomain.endsWith(`.${slicedCookieDomain}`)
-          );
-        });
-        allCookies.push(...domainCookies);
-      }
+            currentDomain.endsWith(`.${slicedCookieDomain}`);
+          if (!matchesDomain) continue;
 
-      return allCookies;
-    } catch (error) {
-      console.error("Error getting cookies for domain:", domain, error);
-      return [];
+          const partitionKey =
+            "partitionKey" in cookie && cookie.partitionKey ? JSON.stringify(cookie.partitionKey) : "";
+          const key = `${cookie.storeId}|${cookie.name}|${cookie.domain}|${cookie.path}|${partitionKey}`;
+          seen.set(key, cookie);
+        }
+      }
     }
+
+    return Array.from(seen.values());
   }
 
   async clearCookiesForDomain(domain: string): Promise<void> {
@@ -32,11 +38,15 @@ export class CookieHandler {
 
     const clearPromises = cookies.map(async (cookie) => {
       try {
-        await chrome.cookies.remove({
+        const removeDetails: chrome.cookies.CookieDetails & { partitionKey?: unknown } = {
           url: this.buildCookieUrl(cookie, domain),
           name: cookie.name,
           storeId: cookie.storeId,
-        });
+        };
+        if ("partitionKey" in cookie && cookie.partitionKey) {
+          removeDetails.partitionKey = cookie.partitionKey;
+        }
+        await chrome.cookies.remove(removeDetails);
       } catch (error) {
         console.warn("Failed to remove cookie:", cookie.name, error);
       }

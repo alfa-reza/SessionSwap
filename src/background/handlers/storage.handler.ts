@@ -10,10 +10,14 @@ export class StorageHandler {
         func: extractStorageData,
       });
 
-      return results?.[0]?.result || { localStorage: {}, sessionStorage: {} };
+      if (!results?.[0]?.result) {
+        throw new ExtensionError("Unable to read storage from this page");
+      }
+
+      return results[0].result;
     } catch (error) {
-      console.error("Error getting storage data:", error);
-      return { localStorage: {}, sessionStorage: {} };
+      if (error instanceof ExtensionError) throw error;
+      throw new ExtensionError(`Failed to get storage data: ${error}`);
     }
   }
 

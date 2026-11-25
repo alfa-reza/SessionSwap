@@ -4,6 +4,21 @@ import { getDomainFromUrl } from "@shared/utils";
 import { MessageService } from "./services/message.service";
 
 const messageService = new MessageService();
+let cachedDomainCounts: Map<string, number> | null = null;
+let cachedShowBadge = DEFAULT_SETTINGS.showBadge;
+
+async function ensureBadgeCache(): Promise<void> {
+  if (cachedDomainCounts !== null) return;
+
+  const storage = (await chrome.storage.local.get([STORAGE_KEYS.SESSIONS, STORAGE_KEYS.SETTINGS])) as ExtensionStorage;
+
+  const counts = new Map<string, number>();
+  for (const session of storage.sessions || []) {
+    counts.set(session.domain, (counts.get(session.domain) ?? 0) + 1);
+  }
+  cachedDomainCounts = counts;
+  cachedShowBadge = storage.settings?.showBadge ?? DEFAULT_SETTINGS.showBadge;
+}
 
 async function updateTabBadge(tabId: number, url?: string): Promise<void> {
   if (!chrome.action?.setBadgeText) return;
@@ -15,18 +30,13 @@ async function updateTabBadge(tabId: number, url?: string): Promise<void> {
       return;
     }
 
-    const storage = (await chrome.storage.local.get([
-      STORAGE_KEYS.SESSIONS,
-      STORAGE_KEYS.SETTINGS,
-    ])) as ExtensionStorage;
-
-    const showBadge = storage.settings?.showBadge ?? DEFAULT_SETTINGS.showBadge;
-    if (!showBadge) {
+    await ensureBadgeCache();
+    if (!cachedShowBadge) {
       await chrome.action.setBadgeText({ tabId, text: "" });
       return;
     }
 
-    const count = (storage.sessions || []).filter((s) => s.domain === domain).length;
+    const count = cachedDomainCounts?.get(domain) ?? 0;
     await chrome.action.setBadgeText({ tabId, text: count > 0 ? String(count) : "" });
     if (count > 0 && chrome.action.setBadgeBackgroundColor) {
       await chrome.action.setBadgeBackgroundColor({ tabId, color: "#2563eb" });
@@ -83,6 +93,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === "local" && (changes[STORAGE_KEYS.SESSIONS] || changes[STORAGE_KEYS.SETTINGS])) {
+    cachedDomainCounts = null;
     void refreshActiveTabBadge();
   }
 });

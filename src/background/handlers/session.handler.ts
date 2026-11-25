@@ -39,15 +39,14 @@ export class SessionHandler {
     const { domain, cookies, localStorage, sessionStorage } = sessionData;
 
     try {
-      await this.cookieHandler.clearCookiesForDomain(domain);
+      // Restore page storage first so restricted pages fail before clearing cookies
+      await this.storageHandler.restoreStorageData(tabId, {
+        localStorage,
+        sessionStorage,
+      });
 
-      await Promise.all([
-        this.cookieHandler.restoreCookies(cookies, domain),
-        this.storageHandler.restoreStorageData(tabId, {
-          localStorage,
-          sessionStorage,
-        }),
-      ]);
+      await this.cookieHandler.clearCookiesForDomain(domain);
+      await this.cookieHandler.restoreCookies(cookies, domain);
 
       if (await this.shouldAutoReload()) {
         await chrome.tabs.reload(tabId);

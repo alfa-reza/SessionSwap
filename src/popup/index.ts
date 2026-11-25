@@ -1,10 +1,11 @@
-import { DEFAULT_SETTINGS, ExtensionSettings, ThemePreference } from "@shared/types";
-import { formatDate, getDomainFromUrl, handleError } from "@shared/utils";
+import { DEFAULT_SETTINGS, ExtensionSettings, SessionData, ThemePreference } from "@shared/types";
+import { getDomainFromUrl, handleError } from "@shared/utils";
 import { LoadingManager } from "./components/loadingManager";
 import { ModalManager } from "./components/modalManager";
 import { SessionList } from "./components/sessionList";
 import { PopupService } from "./services/popup.service";
-import { escapeHtml, getElementByIdSafe } from "./utils/dom";
+import { UI_TEXT } from "./utils/constants";
+import { escapeHtml, getElementByIdSafe, renderSessionRow } from "./utils/dom";
 
 const CLEAR_SITE_SENTINEL = "__CLEAR_CURRENT_SITE__";
 
@@ -68,7 +69,7 @@ class PopupController {
     this.setupEventListeners();
   }
 
-  async initialize(): Promise<void> {
+  async initialize(): Promise<string> {
     try {
       this.modalManager.hideAllModals();
       this.setActiveView("main");
@@ -83,19 +84,19 @@ class PopupController {
       this.applyTheme(theme);
       this.applySettings(settings);
 
+      if (!state) return "";
+
       const hasValidDomain = state.currentDomain.length > 0;
       this.currentSiteElement.textContent = hasValidDomain ? state.currentDomain : "Unsupported page";
       this.currentSiteElement.parentElement?.classList.toggle("unsupported", !hasValidDomain);
       this.saveBtn.disabled = !hasValidDomain;
       this.newSessionBtn.disabled = !hasValidDomain;
       this.renderSessionsList();
+      return state.currentDomain;
     } catch (error) {
       this.showError(handleError(error, "PopupController.initialize"));
+      return "";
     }
-  }
-
-  getServiceInstance(): PopupService {
-    return this.popupService;
   }
 
   private setupEventListeners(): void {
@@ -171,7 +172,7 @@ class PopupController {
         await this.popupService.saveCurrentSession(name, color);
       });
 
-      this.modalManager.hideSaveModal();
+      this.modalManager.hide("save");
       this.renderSessionsList();
     } catch (error) {
       this.showError(handleError(error, "save session"));
@@ -219,7 +220,7 @@ class PopupController {
       const color = this.modalManager.getRenameModalColor();
       const sessionId = this.popupService.getState().currentRenameSessionId;
 
-      if (newName && sessionId) {
+      if (sessionId) {
         await this.popupService.renameSession(sessionId, newName, color);
         this.renderSessionsList();
         if (!this.allSessionsView.hidden) {
@@ -227,7 +228,7 @@ class PopupController {
         }
       }
 
-      this.modalManager.hideRenameModal();
+      this.modalManager.hide("rename");
     } catch (error) {
       this.showError(handleError(error, "rename session"));
     }
@@ -256,7 +257,7 @@ class PopupController {
         }
       }
 
-      this.modalManager.hideDeleteModal();
+      this.modalManager.hide("delete");
     } catch (error) {
       this.showError(handleError(error, "delete session"));
     }
@@ -308,15 +309,8 @@ class PopupController {
     }
   }
 
-  private getFaviconUrl(domain: string): string | null {
-    const tabIcon = this.tabFavicons.get(domain);
-    if (tabIcon) return tabIcon;
-
-    const isLocalOrIp = domain === "localhost" || /^\d{1,3}(\.\d{1,3}){3}$/.test(domain);
-    if (!isLocalOrIp && domain.includes(".")) {
-      return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=32`;
-    }
-    return null;
+  private getFaviconUrl(domain: string, domainSessions: SessionData[]): string | null {
+    return this.tabFavicons.get(domain) ?? domainSessions.find((s) => s.faviconUrl)?.faviconUrl ?? null;
   }
 
   private renderAllSessionsList(): void {
@@ -369,54 +363,19 @@ class PopupController {
           .slice()
           .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
         const activeId = activeSessions[domain];
-        const faviconUrl = this.getFaviconUrl(domain);
+        const faviconUrl = this.getFaviconUrl(domain, domainSessions);
         const safeDomain = escapeHtml(domain);
         const currentLabel = domain === currentDomain ? "Current" : "";
 
         const rowsHtml = domainSessions
-          .map((session) => {
-            const isActive = session.id === activeId;
-            return `
-              <div class="all-session-row ${isActive ? "active" : ""}" data-session-id="${escapeHtml(session.id)}">
-                <div class="session-info">
-                  <div class="session-name-row">
-                    <span class="active-badge" aria-hidden="true"></span>
-                    <span class="session-name"${session.color ? ` data-color="${escapeHtml(session.color)}"` : ""}>${escapeHtml(session.name)}</span>
-                  </div>
-                  <div class="session-meta">Last used ${formatDate(session.lastUsed)}</div>
-                </div>
-                <div class="session-actions">
-                  <button
-                    class="session-btn rename-btn"
-                    type="button"
-                    data-action="rename"
-                    data-session-id="${escapeHtml(session.id)}"
-                    aria-label="Rename session ${escapeHtml(session.name)}"
-                    title="Rename"
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <path d="M12 20h9" />
-                      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                    </svg>
-                  </button>
-                  <button
-                    class="session-btn delete-btn"
-                    type="button"
-                    data-action="delete"
-                    data-session-id="${escapeHtml(session.id)}"
-                    aria-label="Delete session ${escapeHtml(session.name)}"
-                    title="Delete"
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <path d="M3 6h18" />
-                      <path d="M8 6V4h8v2" />
-                      <path d="M19 6l-1 14H6L5 6" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            `;
-          })
+          .map((session) =>
+            renderSessionRow({
+              session,
+              isActive: session.id === activeId,
+              itemClass: "all-session-row",
+              lastUsedLabel: UI_TEXT.LAST_USED,
+            })
+          )
           .join("");
 
         const openAttr = this.collapsedDomains.has(domain) ? "" : "open";
@@ -480,11 +439,9 @@ class PopupController {
   }
 
   private applyTheme(theme: ThemePreference): void {
-    if (theme === "system") {
-      delete document.documentElement.dataset.theme;
-    } else {
-      document.documentElement.dataset.theme = theme;
-    }
+    const resolved =
+      theme === "system" ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : theme;
+    document.documentElement.dataset.theme = resolved;
     this.updateSegmentedState("[data-theme-option]", "themeOption", theme);
   }
 
@@ -576,20 +533,14 @@ class PopupController {
 document.addEventListener("DOMContentLoaded", async () => {
   console.log("SessionSwap popup loaded");
   const controller = new PopupController();
-  await controller.initialize();
-
-  const service = controller.getServiceInstance();
-  const state = service.getState();
-
-  let currentDomain = state.currentDomain;
+  let currentDomain = await controller.initialize();
 
   const tabActivatedListener = async (activeInfo: { tabId: number }) => {
     const tab = await chrome.tabs.get(activeInfo.tabId);
     if (tab.url) {
       const newDomain = getDomainFromUrl(tab.url);
       if (newDomain !== currentDomain) {
-        currentDomain = newDomain;
-        await controller.initialize();
+        currentDomain = await controller.initialize();
       }
     }
   };
@@ -599,8 +550,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const newDomain = getDomainFromUrl(tab.url);
     if (newDomain !== currentDomain) {
-      currentDomain = newDomain;
-      await controller.initialize();
+      currentDomain = await controller.initialize();
     }
   };
 

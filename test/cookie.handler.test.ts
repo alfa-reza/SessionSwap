@@ -29,26 +29,62 @@ describe("CookieHandler", () => {
     mock.restore();
   });
 
-  test("does not match unrelated domains sharing a suffix", async () => {
+  test("includes parent domain cookies and does not match unrelated domains sharing a suffix", async () => {
     const mockCookies = [
-      { domain: ".google.com", name: "SID", storeId: "0" },
-      { domain: "mygoogle.com", name: "EVIL", storeId: "0" },
-      { domain: "mail.google.com", name: "MAIL", storeId: "0" },
+      { domain: ".google.com", name: "SID", path: "/", storeId: "0" },
+      { domain: "mygoogle.com", name: "EVIL", path: "/", storeId: "0" },
+      { domain: "mail.google.com", name: "MAIL", path: "/", storeId: "0" },
     ];
 
     (globalThis as { chrome?: unknown }).chrome = {
       cookies: {
         getAllCookieStores: mock(async () => [{ id: "0" }]),
-        getAll: mock(async () => mockCookies),
+        getAll: mock(async ({ domain }: { domain: string }) =>
+          mockCookies.filter((c) => {
+            const clean = c.domain.startsWith(".") ? c.domain.slice(1) : c.domain;
+            return clean === domain || clean.endsWith(`.${domain}`);
+          })
+        ),
       },
     };
 
     const handler = new CookieHandler();
     const googleCookies = await handler.getCookiesForDomain("mail.google.com");
-    expect(googleCookies.map((c) => c.name)).toEqual(["SID", "MAIL"]);
+    expect(googleCookies.map((c) => c.name).sort()).toEqual(["MAIL", "SID"]);
 
     const myGoogleCookies = await handler.getCookiesForDomain("mygoogle.com");
     expect(myGoogleCookies.map((c) => c.name)).toEqual(["EVIL"]);
+  });
+
+  test("clearCookiesForDomain passes partitionKey when removing partitioned cookies", async () => {
+    const removeMock = mock(async () => ({}));
+    (globalThis as { chrome?: unknown }).chrome = {
+      cookies: {
+        getAllCookieStores: mock(async () => [{ id: "0" }]),
+        getAll: mock(async () => [
+          {
+            domain: "example.com",
+            name: "PART",
+            path: "/",
+            secure: true,
+            storeId: "0",
+            partitionKey: { topLevelSite: "https://parent.example" },
+          },
+        ]),
+        remove: removeMock,
+      },
+    };
+
+    const handler = new CookieHandler();
+    await handler.clearCookiesForDomain("example.com");
+
+    expect(removeMock).toHaveBeenCalledTimes(1);
+    expect((removeMock.mock.calls[0] as unknown[])[0]).toEqual({
+      url: "https://example.com/",
+      name: "PART",
+      storeId: "0",
+      partitionKey: { topLevelSite: "https://parent.example" },
+    });
   });
 
   test("restores __Host- cookies without domain and strips port from fallbackDomain", async () => {

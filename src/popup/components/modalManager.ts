@@ -3,6 +3,15 @@ import { getElementByIdSafe } from "@popup/utils/dom";
 import { SessionColor } from "@shared/types";
 import { ModalList, ModalInputs } from "@shared/types/modal.types";
 
+const COLOR_SWATCHES: Array<{ value: SessionColor | ""; label: string }> = [
+  { value: "", label: "Default" },
+  { value: "blue", label: "Blue" },
+  { value: "green", label: "Green" },
+  { value: "amber", label: "Amber" },
+  { value: "rose", label: "Rose" },
+  { value: "purple", label: "Purple" },
+];
+
 export class ModalManager {
   private modals: ModalList;
   private inputs: ModalInputs;
@@ -20,7 +29,24 @@ export class ModalManager {
       newSessionName: getElementByIdSafe("newSessionName"),
     };
 
+    this.renderColorPicker("saveColorPicker");
+    this.renderColorPicker("renameColorPicker");
     this.setupEventListeners();
+  }
+
+  private renderColorPicker(pickerId: string): void {
+    const picker = getElementByIdSafe(pickerId);
+    const buttons = COLOR_SWATCHES.map(({ value, label }, idx) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "color-swatch";
+      btn.dataset.color = value;
+      btn.setAttribute("role", "radio");
+      btn.setAttribute("aria-checked", String(idx === 0));
+      btn.title = label;
+      return btn;
+    });
+    picker.replaceChildren(...buttons);
   }
 
   private setupEventListeners(): void {
@@ -155,19 +181,6 @@ export class ModalManager {
     return color ? (color as SessionColor) : undefined;
   }
 
-  hideSaveModal(): void {
-    this.hide("save");
-  }
-  hideRenameModal(): void {
-    this.hide("rename");
-  }
-  hideDeleteModal(): void {
-    this.hide("delete");
-  }
-  hideErrorModal(): void {
-    this.hide("error");
-  }
-
   hideAllModals(): void {
     this.hideVisible();
     this.inputs.sessionName.value = "";
@@ -190,7 +203,7 @@ export class ModalManager {
     this.modals[modalKey].classList.add(CSS_CLASSES.SHOW);
   }
 
-  private hide(modalKey: keyof ModalList): void {
+  hide(modalKey: keyof ModalList): void {
     this.modals[modalKey].classList.remove(CSS_CLASSES.SHOW);
   }
 }

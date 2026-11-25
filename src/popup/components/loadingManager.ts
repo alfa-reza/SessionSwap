@@ -17,7 +17,8 @@ export class LoadingManager {
     }
   }
 
-  async withLoading<T>(operation: () => Promise<T>): Promise<T> {
+  async withLoading<T>(operation: () => Promise<T>): Promise<T | undefined> {
+    if (this.isLoading) return undefined;
     try {
       this.showLoading();
       return await operation();

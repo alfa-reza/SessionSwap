@@ -1,4 +1,4 @@
-export type SessionColor = "blue" | "green" | "amber" | "rose" | "purple" | "slate";
+export type SessionColor = "blue" | "green" | "amber" | "rose" | "purple";
 
 export interface SessionData extends StoredSession {
   id: string;
@@ -8,6 +8,7 @@ export interface SessionData extends StoredSession {
   lastUsed: number;
   order: number;
   color?: SessionColor;
+  faviconUrl?: string;
 }
 
 export interface StoredSession {
