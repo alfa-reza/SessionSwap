@@ -36,6 +36,7 @@ class PopupController {
 
       const hasValidDomain = state.currentDomain.length > 0;
       this.currentSiteElement.textContent = hasValidDomain ? state.currentDomain : "Unsupported page";
+      this.currentSiteElement.parentElement?.classList.toggle("unsupported", !hasValidDomain);
       this.saveBtn.disabled = !hasValidDomain;
       this.newSessionBtn.disabled = !hasValidDomain;
       this.renderSessionsList();

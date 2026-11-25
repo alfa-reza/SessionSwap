@@ -63,17 +63,36 @@ export class SessionList {
         <div class="${CSS_CLASSES.SESSION_ITEM} ${isActive ? CSS_CLASSES.ACTIVE : ""}"
              data-session-id="${session.id}"
              draggable="true">
-          <div class="drag-handle">⋮⋮</div>
+          <div class="drag-handle" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="9" cy="6" r="1.5" />
+              <circle cx="15" cy="6" r="1.5" />
+              <circle cx="9" cy="12" r="1.5" />
+              <circle cx="15" cy="12" r="1.5" />
+              <circle cx="9" cy="18" r="1.5" />
+              <circle cx="15" cy="18" r="1.5" />
+            </svg>
+          </div>
           <div class="session-info">
-            <div class="session-name">${escapeHtml(session.name)}</div>
+            <div class="session-name-row">
+              <span class="active-badge" aria-hidden="true"></span>
+              <span class="session-name">${escapeHtml(session.name)}</span>
+            </div>
             <div class="session-meta">${UI_TEXT.LAST_USED} ${lastUsed}</div>
           </div>
           <div class="session-actions">
-            <button class="${CSS_CLASSES.SESSION_BTN} rename-btn" data-action="rename" data-session-id="${session.id}">
-              ✏️
+            <button class="${CSS_CLASSES.SESSION_BTN} rename-btn" type="button" data-action="rename" data-session-id="${session.id}" aria-label="Rename session" title="Rename">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+              </svg>
             </button>
-            <button class="${CSS_CLASSES.SESSION_BTN} delete-btn" data-action="delete" data-session-id="${session.id}">
-              🗑️
+            <button class="${CSS_CLASSES.SESSION_BTN} delete-btn" type="button" data-action="delete" data-session-id="${session.id}" aria-label="Delete session" title="Delete">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 6h18" />
+                <path d="M8 6V4h8v2" />
+                <path d="M19 6l-1 14H6L5 6" />
+              </svg>
             </button>
           </div>
         </div>
@@ -86,11 +105,12 @@ export class SessionList {
 
   private handleClick(e: Event): void {
     const target = e.target as HTMLElement;
+    const actionBtn = target.closest(`.${CSS_CLASSES.SESSION_BTN}`) as HTMLElement | null;
 
-    if (target.classList.contains(CSS_CLASSES.SESSION_BTN)) {
+    if (actionBtn) {
       e.stopPropagation();
-      const action = target.dataset.action;
-      const sessionId = target.dataset.sessionId;
+      const action = actionBtn.dataset.action;
+      const sessionId = actionBtn.dataset.sessionId;
 
       if (!sessionId) return;
 
@@ -102,7 +122,7 @@ export class SessionList {
       return;
     }
 
-    if (target.classList.contains("drag-handle")) {
+    if (target.closest(".drag-handle")) {
       return;
     }
 
