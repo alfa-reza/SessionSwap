@@ -1,36 +1,49 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { afterEach, beforeEach, describe, expect, jest, test } from "@jest/globals";
 import { ChromeApiService } from "@popup/services/chromeApi.service";
 import { PopupService } from "@popup/services/popup.service";
 import type { SessionData } from "@shared/types";
-import type { SpiedFunction } from "jest-mock";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
-jest.mock("@popup/services/chromeApi.service");
+const setupMockChromeApi = (
+  overrides: {
+    getCurrentTab?: () => Promise<chrome.tabs.Tab>;
+    getStorageData?: () => Promise<any>;
+    sendMessage?: () => Promise<any>;
+    setStorageData?: () => Promise<void>;
+  } = {}
+) => {
+  const getCurrentTab = spyOn(ChromeApiService.prototype, "getCurrentTab").mockImplementation(
+    overrides.getCurrentTab ?? (async () => ({ id: 1, url: "https://example.com" }) as chrome.tabs.Tab)
+  );
+  const getStorageData = spyOn(ChromeApiService.prototype, "getStorageData").mockImplementation(
+    overrides.getStorageData ?? (async () => ({ sessions: [], activeSessions: {} }))
+  );
+  const sendMessage = spyOn(ChromeApiService.prototype, "sendMessage").mockImplementation(
+    overrides.sendMessage ?? (async () => ({ success: true }))
+  );
+  const setStorageData = spyOn(ChromeApiService.prototype, "setStorageData").mockImplementation(
+    overrides.setStorageData ?? (async () => undefined)
+  );
 
-const createMockChromeApi = () => ({
-  getCurrentTab: jest.fn<any>().mockResolvedValue({ id: 1, url: "https://example.com" } as chrome.tabs.Tab),
-  getStorageData: jest.fn<any>().mockResolvedValue({ sessions: [], activeSessions: {} }),
-  sendMessage: jest.fn<any>().mockResolvedValue({ success: true }),
-  setStorageData: jest.fn<any>().mockResolvedValue(undefined),
-});
+  return { getCurrentTab, getStorageData, sendMessage, setStorageData };
+};
 
 describe("PopupService", () => {
-  let consoleErrorSpy: SpiedFunction<(...data: never[]) => void>;
+  let consoleErrorSpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
-    consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    mock.restore();
   });
 
   describe("saveCurrentSession", () => {
     test("should throw error when getCurrentSession fails", async () => {
-      const mockChromeApi = createMockChromeApi();
-      mockChromeApi.sendMessage.mockResolvedValue({ success: false, error: "Failed to get session" });
-
-      (ChromeApiService as jest.Mock).mockImplementation(() => mockChromeApi);
+      setupMockChromeApi({
+        sendMessage: async () => ({ success: false, error: "Failed to get session" }),
+      });
 
       const service = new PopupService();
       await service.initialize();
@@ -40,13 +53,12 @@ describe("PopupService", () => {
     });
 
     test("should save session with correct order when no existing sessions", async () => {
-      const mockChromeApi = createMockChromeApi();
-      mockChromeApi.sendMessage.mockResolvedValueOnce({
-        success: true,
-        data: { cookies: [], localStorage: {}, sessionStorage: {} },
+      const { setStorageData } = setupMockChromeApi({
+        sendMessage: async () => ({
+          success: true,
+          data: { cookies: [], localStorage: {}, sessionStorage: {} },
+        }),
       });
-
-      (ChromeApiService as jest.Mock).mockImplementation(() => mockChromeApi);
 
       const service = new PopupService();
       await service.initialize();
@@ -56,7 +68,7 @@ describe("PopupService", () => {
       expect(session.name).toBe("First Session");
       expect(session.order).toBe(0);
       expect(session.domain).toBe("example.com");
-      expect(mockChromeApi.setStorageData).toHaveBeenCalled();
+      expect(setStorageData).toHaveBeenCalled();
     });
 
     test("should save session with incremented order when existing sessions exist", async () => {
@@ -85,17 +97,13 @@ describe("PopupService", () => {
         },
       ];
 
-      const mockChromeApi = createMockChromeApi();
-      mockChromeApi.getStorageData.mockResolvedValue({
-        sessions: existingSessions,
-        activeSessions: {},
+      setupMockChromeApi({
+        getStorageData: async () => ({ sessions: existingSessions, activeSessions: {} }),
+        sendMessage: async () => ({
+          success: true,
+          data: { cookies: [], localStorage: {}, sessionStorage: {} },
+        }),
       });
-      mockChromeApi.sendMessage.mockResolvedValue({
-        success: true,
-        data: { cookies: [], localStorage: {}, sessionStorage: {} },
-      });
-
-      (ChromeApiService as jest.Mock).mockImplementation(() => mockChromeApi);
 
       const service = new PopupService();
       await service.initialize();
@@ -133,13 +141,9 @@ describe("PopupService", () => {
         },
       ];
 
-      const mockChromeApi = createMockChromeApi();
-      mockChromeApi.getStorageData.mockResolvedValue({
-        sessions,
-        activeSessions: {},
+      const { setStorageData } = setupMockChromeApi({
+        getStorageData: async () => ({ sessions, activeSessions: {} }),
       });
-
-      (ChromeApiService as jest.Mock).mockImplementation(() => mockChromeApi);
 
       const service = new PopupService();
       await service.initialize();
@@ -151,7 +155,7 @@ describe("PopupService", () => {
       const session2 = state.sessions.find((s) => s.id === "2");
       expect(session2?.order).toBe(0);
       expect(session1?.order).toBe(1);
-      expect(mockChromeApi.setStorageData).toHaveBeenCalled();
+      expect(setStorageData).toHaveBeenCalled();
     });
 
     test("should throw error when session count mismatch", async () => {
@@ -169,13 +173,9 @@ describe("PopupService", () => {
         },
       ];
 
-      const mockChromeApi = createMockChromeApi();
-      mockChromeApi.getStorageData.mockResolvedValue({
-        sessions,
-        activeSessions: {},
+      setupMockChromeApi({
+        getStorageData: async () => ({ sessions, activeSessions: {} }),
       });
-
-      (ChromeApiService as jest.Mock).mockImplementation(() => mockChromeApi);
 
       const service = new PopupService();
       await service.initialize();
@@ -211,13 +211,9 @@ describe("PopupService", () => {
         },
       ];
 
-      const mockChromeApi = createMockChromeApi();
-      mockChromeApi.getStorageData.mockResolvedValue({
-        sessions,
-        activeSessions: {},
+      setupMockChromeApi({
+        getStorageData: async () => ({ sessions, activeSessions: {} }),
       });
-
-      (ChromeApiService as jest.Mock).mockImplementation(() => mockChromeApi);
 
       const service = new PopupService();
       await service.initialize();
@@ -253,13 +249,9 @@ describe("PopupService", () => {
         },
       ];
 
-      const mockChromeApi = createMockChromeApi();
-      mockChromeApi.getStorageData.mockResolvedValue({
-        sessions,
-        activeSessions: {},
+      setupMockChromeApi({
+        getStorageData: async () => ({ sessions, activeSessions: {} }),
       });
-
-      (ChromeApiService as jest.Mock).mockImplementation(() => mockChromeApi);
 
       const service = new PopupService();
       await service.initialize();
@@ -297,13 +289,9 @@ describe("PopupService", () => {
         },
       ];
 
-      const mockChromeApi = createMockChromeApi();
-      mockChromeApi.getStorageData.mockResolvedValue({
-        sessions: sessionsWithoutOrder,
-        activeSessions: {},
+      const { setStorageData } = setupMockChromeApi({
+        getStorageData: async () => ({ sessions: sessionsWithoutOrder, activeSessions: {} }),
       });
-
-      (ChromeApiService as jest.Mock).mockImplementation(() => mockChromeApi);
 
       const service = new PopupService();
       await service.initialize();
@@ -311,7 +299,7 @@ describe("PopupService", () => {
       const state = service.getState();
       expect(state.sessions[0].order).toBe(0);
       expect(state.sessions[1].order).toBe(1);
-      expect(mockChromeApi.setStorageData).toHaveBeenCalledTimes(1);
+      expect(setStorageData).toHaveBeenCalledTimes(1);
     });
 
     test("should not save when sessions already have order field", async () => {
@@ -329,18 +317,14 @@ describe("PopupService", () => {
         },
       ];
 
-      const mockChromeApi = createMockChromeApi();
-      mockChromeApi.getStorageData.mockResolvedValue({
-        sessions: sessionsWithOrder,
-        activeSessions: {},
+      const { setStorageData } = setupMockChromeApi({
+        getStorageData: async () => ({ sessions: sessionsWithOrder, activeSessions: {} }),
       });
-
-      (ChromeApiService as jest.Mock).mockImplementation(() => mockChromeApi);
 
       const service = new PopupService();
       await service.initialize();
 
-      expect(mockChromeApi.setStorageData).not.toHaveBeenCalled();
+      expect(setStorageData).not.toHaveBeenCalled();
     });
   });
 
@@ -360,13 +344,9 @@ describe("PopupService", () => {
         },
       ];
 
-      const mockChromeApi = createMockChromeApi();
-      mockChromeApi.getStorageData.mockResolvedValue({
-        sessions,
-        activeSessions: { "example.com": "1" },
+      setupMockChromeApi({
+        getStorageData: async () => ({ sessions, activeSessions: { "example.com": "1" } }),
       });
-
-      (ChromeApiService as jest.Mock).mockImplementation(() => mockChromeApi);
 
       const service = new PopupService();
       await service.initialize();
@@ -395,13 +375,9 @@ describe("PopupService", () => {
         },
       ];
 
-      const mockChromeApi = createMockChromeApi();
-      mockChromeApi.getStorageData.mockResolvedValue({
-        sessions,
-        activeSessions: {},
+      setupMockChromeApi({
+        getStorageData: async () => ({ sessions, activeSessions: {} }),
       });
-
-      (ChromeApiService as jest.Mock).mockImplementation(() => mockChromeApi);
 
       const service = new PopupService();
       await service.initialize();
@@ -413,9 +389,7 @@ describe("PopupService", () => {
     });
 
     test("should throw error when session not found", async () => {
-      const mockChromeApi = createMockChromeApi();
-
-      (ChromeApiService as jest.Mock).mockImplementation(() => mockChromeApi);
+      setupMockChromeApi();
 
       const service = new PopupService();
       await service.initialize();
@@ -440,13 +414,9 @@ describe("PopupService", () => {
         },
       ];
 
-      const mockChromeApi = createMockChromeApi();
-      mockChromeApi.getStorageData.mockResolvedValue({
-        sessions,
-        activeSessions: {},
+      setupMockChromeApi({
+        getStorageData: async () => ({ sessions, activeSessions: {} }),
       });
-
-      (ChromeApiService as jest.Mock).mockImplementation(() => mockChromeApi);
 
       const service = new PopupService();
       await service.initialize();
@@ -460,9 +430,7 @@ describe("PopupService", () => {
     });
 
     test("should throw error when session not found", async () => {
-      const mockChromeApi = createMockChromeApi();
-
-      (ChromeApiService as jest.Mock).mockImplementation(() => mockChromeApi);
+      setupMockChromeApi();
 
       const service = new PopupService();
       await service.initialize();
@@ -473,13 +441,9 @@ describe("PopupService", () => {
 
   describe("createNewSession", () => {
     test("should clear active session for current domain", async () => {
-      const mockChromeApi = createMockChromeApi();
-      mockChromeApi.getStorageData.mockResolvedValue({
-        sessions: [],
-        activeSessions: { "example.com": "1" },
+      const { sendMessage } = setupMockChromeApi({
+        getStorageData: async () => ({ sessions: [], activeSessions: { "example.com": "1" } }),
       });
-
-      (ChromeApiService as jest.Mock).mockImplementation(() => mockChromeApi);
 
       const service = new PopupService();
       await service.initialize();
@@ -488,7 +452,7 @@ describe("PopupService", () => {
 
       const state = service.getState();
       expect(state.activeSessions["example.com"]).toBeUndefined();
-      expect(mockChromeApi.sendMessage).toHaveBeenCalledWith(
+      expect(sendMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           action: "clearSession",
           domain: "example.com",

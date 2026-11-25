@@ -1,6 +1,6 @@
 import { CookieHandler } from "@background/handlers/cookie.handler";
-import { afterEach, describe, expect, jest, test } from "@jest/globals";
 import { getDomainFromUrl } from "@shared/utils";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 
 describe("getDomainFromUrl", () => {
   test("extracts domain and strips www", () => {
@@ -26,7 +26,7 @@ describe("CookieHandler", () => {
 
   afterEach(() => {
     (globalThis as { chrome?: unknown }).chrome = originalChrome;
-    jest.restoreAllMocks();
+    mock.restore();
   });
 
   test("does not match unrelated domains sharing a suffix", async () => {
@@ -38,8 +38,8 @@ describe("CookieHandler", () => {
 
     (globalThis as { chrome?: unknown }).chrome = {
       cookies: {
-        getAllCookieStores: jest.fn(async () => [{ id: "0" }]),
-        getAll: jest.fn(async () => mockCookies),
+        getAllCookieStores: mock(async () => [{ id: "0" }]),
+        getAll: mock(async () => mockCookies),
       },
     };
 
@@ -52,7 +52,7 @@ describe("CookieHandler", () => {
   });
 
   test("restores __Host- cookies without domain and strips port from fallbackDomain", async () => {
-    const setMock = jest.fn(async () => ({}));
+    const setMock = mock(async () => ({}));
     (globalThis as { chrome?: unknown }).chrome = {
       cookies: { set: setMock },
     };
