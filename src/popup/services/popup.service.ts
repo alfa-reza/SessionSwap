@@ -138,10 +138,11 @@ export class PopupService {
 
   async deleteSession(sessionId: string): Promise<void> {
     try {
+      const target = this.state.sessions.find((s) => s.id === sessionId);
       this.state.sessions = this.state.sessions.filter((s) => s.id !== sessionId);
 
-      if (this.state.activeSessions[this.state.currentDomain] === sessionId) {
-        delete this.state.activeSessions[this.state.currentDomain];
+      if (target && this.state.activeSessions[target.domain] === sessionId) {
+        delete this.state.activeSessions[target.domain];
       }
 
       await this.saveStorageData();

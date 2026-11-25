@@ -394,7 +394,103 @@ async function runE2E() {
     assert.deepEqual(restoreRes.value.names, ["Restored Alice"]);
     await closePopup();
 
-    console.log("✅ Firefox E2E login/session-switch/settings suite passed!");
+    // 9. All Sessions view: website info, favicon, and trash delete with confirmation
+    await withPopup("doc.getElementById('allSessionsBtn').click();");
+    await Bun.sleep(200);
+    const allSessionsBefore = await m.cmd<{
+      value: { domains: string[]; hasFavicon: boolean; rows: number; viewHeight: number };
+    }>("WebDriver:ExecuteScript", {
+      script: `
+          const pb = Array.from(document.querySelectorAll('browser')).find((b) => (b.currentURI?.spec || '').includes('popup/index.html'));
+          const doc = pb.contentDocument;
+          const view = doc.getElementById('allSessionsView');
+          return {
+            domains: Array.from(doc.querySelectorAll('.site-group-domain')).map((e) => e.textContent),
+            hasFavicon: doc.querySelectorAll('.site-favicon svg').length > 0,
+            rows: doc.querySelectorAll('.all-session-row').length,
+            viewHeight: view.getBoundingClientRect().height,
+          };
+        `,
+    });
+    assert.deepEqual(allSessionsBefore.value.domains, [`localhost:${server.port}`]);
+    assert.equal(allSessionsBefore.value.hasFavicon, true);
+    assert.equal(allSessionsBefore.value.rows, 1);
+    assert.ok(allSessionsBefore.value.viewHeight > 100, "Expected visible All Sessions view");
+
+    // Minimize/collapse website group and expand it back
+    const collapsedOpen = await m.cmd<{ value: { afterCollapse: boolean; afterExpand: boolean } }>(
+      "WebDriver:ExecuteScript",
+      {
+        script: `
+          const pb = Array.from(document.querySelectorAll('browser')).find((b) => (b.currentURI?.spec || '').includes('popup/index.html'));
+          const doc = pb.contentDocument;
+          const group = doc.querySelector('.site-group');
+          const summary = doc.querySelector('.site-group-header');
+          summary.click();
+          const afterCollapse = group.open;
+          summary.click();
+          const afterExpand = group.open;
+          return { afterCollapse, afterExpand };
+        `,
+      }
+    );
+    assert.equal(collapsedOpen.value.afterCollapse, false);
+    assert.equal(collapsedOpen.value.afterExpand, true);
+
+    // Rename session from All Sessions view
+    await m.cmd("WebDriver:ExecuteScript", {
+      script: `
+          const pb = Array.from(document.querySelectorAll('browser')).find((b) => (b.currentURI?.spec || '').includes('popup/index.html'));
+          const doc = pb.contentDocument;
+          doc.querySelector('#allSessionsList [data-action="rename"]').click();
+          doc.getElementById('newSessionName').value = 'Alice Renamed';
+          doc.getElementById('confirmRename').click();
+        `,
+    });
+    await Bun.sleep(200);
+    const renamedInAll = await m.cmd<{ value: string[] }>("WebDriver:ExecuteScript", {
+      script: `
+          const pb = Array.from(document.querySelectorAll('browser')).find((b) => (b.currentURI?.spec || '').includes('popup/index.html'));
+          const doc = pb.contentDocument;
+          return Array.from(doc.querySelectorAll('#allSessionsList .session-name')).map((e) => e.textContent);
+        `,
+    });
+    assert.deepEqual(renamedInAll.value, ["Alice Renamed"]);
+
+    // Delete via trash icon -> requires confirmation modal
+    await m.cmd("WebDriver:ExecuteScript", {
+      script: `
+          const pb = Array.from(document.querySelectorAll('browser')).find((b) => (b.currentURI?.spec || '').includes('popup/index.html'));
+          const doc = pb.contentDocument;
+          doc.querySelector('#allSessionsList [data-action="delete"]').click();
+        `,
+    });
+    const modalShown = await m.cmd<{ value: boolean }>("WebDriver:ExecuteScript", {
+      script: `
+          const pb = Array.from(document.querySelectorAll('browser')).find((b) => (b.currentURI?.spec || '').includes('popup/index.html'));
+          const doc = pb.contentDocument;
+          const shown = doc.getElementById('deleteModal').classList.contains('show');
+          doc.getElementById('confirmDelete').click();
+          return shown;
+        `,
+    });
+    assert.equal(modalShown.value, true);
+    await Bun.sleep(300);
+
+    const allSessionsAfter = await m.cmd<{ value: { rows: number; backWorks: boolean } }>("WebDriver:ExecuteScript", {
+      script: `
+          const pb = Array.from(document.querySelectorAll('browser')).find((b) => (b.currentURI?.spec || '').includes('popup/index.html'));
+          const doc = pb.contentDocument;
+          const rows = doc.querySelectorAll('.all-session-row').length;
+          doc.getElementById('allSessionsBackBtn').click();
+          return { rows, backWorks: !doc.getElementById('mainContent').hidden };
+        `,
+    });
+    assert.equal(allSessionsAfter.value.rows, 0);
+    assert.equal(allSessionsAfter.value.backWorks, true);
+    await closePopup();
+
+    console.log("✅ Firefox E2E login/session-switch/settings/all-sessions suite passed!");
   } finally {
     m?.close();
     ff.kill();

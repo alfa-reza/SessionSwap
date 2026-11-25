@@ -581,5 +581,23 @@ describe("PopupService", () => {
       expect(state.sessions.map((s) => s.id)).toEqual(["2"]);
       expect(state.activeSessions).toEqual({ "other.com": "2" });
     });
+
+    test("deleteSession clears active session for that session's own domain", async () => {
+      const sessions = [makeSession("1", "Site A1", "example.com"), makeSession("2", "Site B", "other.com")];
+      setupMockChromeApi({
+        getStorageData: async () => ({
+          sessions,
+          activeSessions: { "example.com": "1", "other.com": "2" },
+        }),
+      });
+
+      const service = new PopupService();
+      await service.initialize();
+      await service.deleteSession("2");
+
+      const state = service.getState();
+      expect(state.sessions.map((s) => s.id)).toEqual(["1"]);
+      expect(state.activeSessions).toEqual({ "example.com": "1" });
+    });
   });
 });

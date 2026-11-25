@@ -43,6 +43,30 @@
               </div>
             </details>
             <button
+              id="allSessionsBtn"
+              class="icon-btn"
+              type="button"
+              aria-label="All Sessions"
+              aria-expanded="false"
+              aria-controls="allSessionsView"
+              title="All Sessions"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <rect x="3" y="4" width="18" height="6" rx="1.5" />
+                <rect x="3" y="14" width="18" height="6" rx="1.5" />
+                <path d="M7 7h.01" />
+                <path d="M7 17h.01" />
+              </svg>
+            </button>
+            <button
               id="settingsBtn"
               class="icon-btn"
               type="button"
@@ -217,6 +241,29 @@
             GitHub
           </a>
         </div>
+      </section>
+
+      <section id="allSessionsView" class="subview" aria-label="All Sessions" hidden>
+        <div class="settings-topbar">
+          <button id="allSessionsBackBtn" class="back-btn" type="button" aria-label="Back to sessions">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+            Back
+          </button>
+          <h2 class="settings-heading">All Sessions</h2>
+          <span id="allSessionsSummary" class="subview-meta"></span>
+        </div>
+
+        <div id="allSessionsList" class="all-sessions-body"></div>
       </section>
     </div>
 

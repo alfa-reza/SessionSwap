@@ -1,10 +1,10 @@
 import { ThemePreference } from "@shared/types";
-import { getDomainFromUrl, handleError } from "@shared/utils";
+import { formatDate, getDomainFromUrl, handleError } from "@shared/utils";
 import { LoadingManager } from "./components/loadingManager";
 import { ModalManager } from "./components/modalManager";
 import { SessionList } from "./components/sessionList";
 import { PopupService } from "./services/popup.service";
-import { getElementByIdSafe } from "./utils/dom";
+import { escapeHtml, getElementByIdSafe } from "./utils/dom";
 
 const CLEAR_SITE_SENTINEL = "__CLEAR_CURRENT_SITE__";
 
@@ -18,13 +18,19 @@ class PopupController {
   private siteBar: HTMLElement;
   private mainContent: HTMLElement;
   private settingsView: HTMLElement;
+  private allSessionsView: HTMLElement;
+  private allSessionsList: HTMLElement;
+  private allSessionsSummary: HTMLElement;
   private settingsBtn: HTMLButtonElement;
+  private allSessionsBtn: HTMLButtonElement;
   private saveBtn: HTMLButtonElement;
   private newSessionBtn: HTMLButtonElement;
   private clearSiteSessionsBtn: HTMLButtonElement;
   private settingsStatusEl: HTMLElement;
   private importBackupInput: HTMLInputElement;
   private restoreMode: "merge" | "replace" = "merge";
+  private tabFavicons = new Map<string, string>();
+  private collapsedDomains = new Set<string>();
 
   constructor() {
     // Get DOM elements
@@ -32,7 +38,11 @@ class PopupController {
     this.siteBar = getElementByIdSafe("siteBar");
     this.mainContent = getElementByIdSafe("mainContent");
     this.settingsView = getElementByIdSafe("settingsView");
+    this.allSessionsView = getElementByIdSafe("allSessionsView");
+    this.allSessionsList = getElementByIdSafe("allSessionsList");
+    this.allSessionsSummary = getElementByIdSafe("allSessionsSummary");
     this.settingsBtn = getElementByIdSafe("settingsBtn");
+    this.allSessionsBtn = getElementByIdSafe("allSessionsBtn");
     this.saveBtn = getElementByIdSafe("saveBtn");
     this.newSessionBtn = getElementByIdSafe("newSessionBtn");
     this.clearSiteSessionsBtn = getElementByIdSafe("clearSiteSessionsBtn");
@@ -48,7 +58,7 @@ class PopupController {
   async initialize(): Promise<void> {
     try {
       this.modalManager.hideAllModals();
-      this.toggleSettings(false);
+      this.setActiveView("main");
       const [theme, state] = await Promise.all([
         this.popupService.getTheme(),
         this.loadingManager.withLoading(async () => {
@@ -82,9 +92,16 @@ class PopupController {
     getElementByIdSafe("confirmRename").addEventListener("click", () => this.handleConfirmRename());
     getElementByIdSafe("confirmDelete").addEventListener("click", () => this.handleConfirmDelete());
 
-    // Settings event listeners
-    this.settingsBtn.addEventListener("click", () => this.toggleSettings(this.settingsView.hidden));
-    getElementByIdSafe("settingsBackBtn").addEventListener("click", () => this.toggleSettings(false));
+    // Subview event listeners
+    this.settingsBtn.addEventListener("click", () => {
+      this.setActiveView(this.settingsView.hidden ? "settings" : "main");
+    });
+    this.allSessionsBtn.addEventListener("click", () => {
+      void this.toggleAllSessions(this.allSessionsView.hidden);
+    });
+    getElementByIdSafe("settingsBackBtn").addEventListener("click", () => this.setActiveView("main"));
+    getElementByIdSafe("allSessionsBackBtn").addEventListener("click", () => this.setActiveView("main"));
+    this.allSessionsList.addEventListener("click", (e) => this.handleAllSessionsClick(e));
     getElementByIdSafe("exportBackupBtn").addEventListener("click", () => this.handleExportBackup());
     getElementByIdSafe("importBackupBtn").addEventListener("click", () => this.importBackupInput.click());
     this.importBackupInput.addEventListener("change", () => this.handleImportBackup());
@@ -173,6 +190,9 @@ class PopupController {
       if (newName && sessionId) {
         await this.popupService.renameSession(sessionId, newName);
         this.renderSessionsList();
+        if (!this.allSessionsView.hidden) {
+          this.renderAllSessionsList();
+        }
       }
 
       this.modalManager.hideRenameModal();
@@ -199,6 +219,9 @@ class PopupController {
       } else if (sessionId) {
         await this.popupService.deleteSession(sessionId);
         this.renderSessionsList();
+        if (!this.allSessionsView.hidden) {
+          this.renderAllSessionsList();
+        }
       }
 
       this.modalManager.hideDeleteModal();
@@ -207,19 +230,199 @@ class PopupController {
     }
   }
 
-  private toggleSettings(open: boolean): void {
+  private setActiveView(view: "main" | "settings" | "allSessions"): void {
     const helpDetails = document.getElementById("helpDetails") as HTMLDetailsElement | null;
-    if (open && helpDetails) helpDetails.open = false;
+    if (view !== "main" && helpDetails) helpDetails.open = false;
 
-    this.siteBar.hidden = open;
-    this.mainContent.hidden = open;
-    this.settingsView.hidden = !open;
-    this.settingsBtn.setAttribute("aria-expanded", String(open));
+    this.siteBar.hidden = view !== "main";
+    this.mainContent.hidden = view !== "main";
+    this.settingsView.hidden = view !== "settings";
+    this.allSessionsView.hidden = view !== "allSessions";
+    this.settingsBtn.setAttribute("aria-expanded", String(view === "settings"));
+    this.allSessionsBtn.setAttribute("aria-expanded", String(view === "allSessions"));
 
-    if (open) {
+    if (view === "settings") {
       this.setSettingsStatus("");
       this.updateClearSiteButtonState();
       getElementByIdSafe("settingsBackBtn").focus();
+    } else if (view === "allSessions") {
+      this.renderAllSessionsList();
+      getElementByIdSafe("allSessionsBackBtn").focus();
+    }
+  }
+
+  private async toggleAllSessions(open: boolean): Promise<void> {
+    if (!open) {
+      this.setActiveView("main");
+      return;
+    }
+
+    await this.loadOpenTabFavicons();
+    this.setActiveView("allSessions");
+  }
+
+  private async loadOpenTabFavicons(): Promise<void> {
+    try {
+      const tabs = await chrome.tabs.query({});
+      this.tabFavicons.clear();
+      for (const tab of tabs) {
+        if (tab.url && tab.favIconUrl && !this.tabFavicons.has(getDomainFromUrl(tab.url))) {
+          const domain = getDomainFromUrl(tab.url);
+          if (domain) this.tabFavicons.set(domain, tab.favIconUrl);
+        }
+      }
+    } catch {
+      // Ignore if tabs query fails; fallback icon will be shown
+    }
+  }
+
+  private getFaviconUrl(domain: string): string | null {
+    const tabIcon = this.tabFavicons.get(domain);
+    if (tabIcon) return tabIcon;
+
+    const isLocalOrIp = domain === "localhost" || /^\d{1,3}(\.\d{1,3}){3}$/.test(domain);
+    if (!isLocalOrIp && domain.includes(".")) {
+      return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=32`;
+    }
+    return null;
+  }
+
+  private renderAllSessionsList(): void {
+    const { sessions, activeSessions, currentDomain } = this.popupService.getState();
+
+    if (sessions.length === 0) {
+      this.allSessionsSummary.textContent = "";
+      const emptyEl = document.createElement("div");
+      emptyEl.className = "no-sessions";
+      emptyEl.textContent = "No sessions saved yet";
+      this.allSessionsList.replaceChildren(emptyEl);
+      return;
+    }
+
+    const grouped = new Map<string, typeof sessions>();
+    for (const session of sessions) {
+      const list = grouped.get(session.domain) ?? [];
+      list.push(session);
+      grouped.set(session.domain, list);
+    }
+
+    const domains = Array.from(grouped.keys()).sort((a, b) => {
+      if (a === currentDomain) return -1;
+      if (b === currentDomain) return 1;
+      return a.localeCompare(b);
+    });
+
+    this.allSessionsSummary.textContent = `${domains.length} site${domains.length === 1 ? "" : "s"} · ${sessions.length}`;
+
+    this.allSessionsList.innerHTML = domains
+      .map((domain) => {
+        const domainSessions = grouped
+          .get(domain)!
+          .slice()
+          .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        const activeId = activeSessions[domain];
+        const faviconUrl = this.getFaviconUrl(domain);
+        const safeDomain = escapeHtml(domain);
+        const currentLabel = domain === currentDomain ? "Current" : "";
+
+        const rowsHtml = domainSessions
+          .map((session) => {
+            const isActive = session.id === activeId;
+            return `
+              <div class="all-session-row ${isActive ? "active" : ""}" data-session-id="${escapeHtml(session.id)}">
+                <div class="session-info">
+                  <div class="session-name-row">
+                    <span class="active-badge" aria-hidden="true"></span>
+                    <span class="session-name">${escapeHtml(session.name)}</span>
+                  </div>
+                  <div class="session-meta">Last used ${formatDate(session.lastUsed)}</div>
+                </div>
+                <div class="session-actions">
+                  <button
+                    class="session-btn rename-btn"
+                    type="button"
+                    data-action="rename"
+                    data-session-id="${escapeHtml(session.id)}"
+                    aria-label="Rename session ${escapeHtml(session.name)}"
+                    title="Rename"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M12 20h9" />
+                      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                    </svg>
+                  </button>
+                  <button
+                    class="session-btn delete-btn"
+                    type="button"
+                    data-action="delete"
+                    data-session-id="${escapeHtml(session.id)}"
+                    aria-label="Delete session ${escapeHtml(session.name)}"
+                    title="Delete"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M3 6h18" />
+                      <path d="M8 6V4h8v2" />
+                      <path d="M19 6l-1 14H6L5 6" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            `;
+          })
+          .join("");
+
+        const openAttr = this.collapsedDomains.has(domain) ? "" : "open";
+        return `
+          <details class="site-group" data-domain="${safeDomain}" ${openAttr}>
+            <summary class="site-group-header">
+              <svg class="site-group-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+              <span class="site-favicon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M2 12h20" />
+                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                </svg>
+                ${faviconUrl ? `<img class="site-favicon-img" src="${escapeHtml(faviconUrl)}" alt="" width="16" height="16" />` : ""}
+              </span>
+              <span class="site-group-domain" title="${safeDomain}">${safeDomain}</span>
+              ${currentLabel ? `<span class="site-group-badge">${currentLabel}</span>` : ""}
+              <span class="site-group-count">${domainSessions.length}</span>
+            </summary>
+            <div class="site-group-sessions">${rowsHtml}</div>
+          </details>
+        `;
+      })
+      .join("");
+
+    this.allSessionsList.querySelectorAll<HTMLImageElement>(".site-favicon-img").forEach((img) => {
+      img.addEventListener("error", () => img.remove(), { once: true });
+    });
+
+    this.allSessionsList.querySelectorAll<HTMLDetailsElement>(".site-group").forEach((group) => {
+      group.addEventListener("toggle", () => {
+        const domain = group.dataset.domain;
+        if (!domain) return;
+        if (group.open) {
+          this.collapsedDomains.delete(domain);
+        } else {
+          this.collapsedDomains.add(domain);
+        }
+      });
+    });
+  }
+
+  private handleAllSessionsClick(e: Event): void {
+    const target = e.target as HTMLElement;
+    const actionBtn = target.closest<HTMLButtonElement>("[data-action]");
+    const sessionId = actionBtn?.dataset.sessionId;
+    if (!sessionId) return;
+
+    if (actionBtn.dataset.action === "rename") {
+      this.handleRenameClick(sessionId);
+    } else if (actionBtn.dataset.action === "delete") {
+      this.handleDeleteClick(sessionId);
     }
   }
 
