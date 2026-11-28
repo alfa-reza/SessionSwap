@@ -1,13 +1,13 @@
 import { SessionHandler } from "@background/handlers/session.handler";
 import { MESSAGE_ACTIONS } from "@shared/constants";
 import { MessageType, SendResponseType, StoredSession } from "@shared/types";
-import { handleError } from "@shared/utils";
+import { getDomainFromUrl, handleError } from "@shared/utils";
 
 export class MessageService {
   private sessionHandler = new SessionHandler();
 
   handleMessage(message: MessageType, _: chrome.runtime.MessageSender, sendResponse: SendResponseType): boolean {
-    this.checkOriginPermissions()
+    this.checkOriginPermissions(message)
       .then(() => {
         return this.processMessage(message, sendResponse);
       })
@@ -19,13 +19,18 @@ export class MessageService {
     return true;
   }
 
-  private async checkOriginPermissions(): Promise<void> {
+  private async checkOriginPermissions(message: MessageType): Promise<void> {
     const { origins = [] } = await chrome.permissions.getAll();
     const hasBroadAccess = origins.some(
       (origin) => origin === "<all_urls>" || origin === "*://*/*" || origin === "http://*/*" || origin === "https://*/*"
     );
+    if (hasBroadAccess) return;
 
-    if (!hasBroadAccess) {
+    const targetDomain = "domain" in message ? message.domain : message.sessionData?.domain;
+    const hasSiteAccess =
+      Boolean(targetDomain) && origins.some((origin) => getDomainFromUrl(origin.replace(/\*$/, "")) === targetDomain);
+
+    if (!hasSiteAccess) {
       throw new Error("Data access permission is required.");
     }
   }

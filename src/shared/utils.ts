@@ -2,10 +2,6 @@ export function formatDate(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString();
 }
 
-export function extractDomain(hostname: string): string {
-  return hostname.replace(/^www\./, "");
-}
-
 export function getDomainFromUrl(url: string): string {
   try {
     const urlObj = new URL(url);
@@ -13,7 +9,7 @@ export function getDomainFromUrl(url: string): string {
       return "";
     }
 
-    const domain = extractDomain(urlObj.hostname);
+    const domain = urlObj.hostname.replace(/^www\./, "");
     const isLocalhost = domain === "localhost" || domain.startsWith("127.");
 
     if (isLocalhost && urlObj.port) {

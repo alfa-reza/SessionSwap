@@ -1,5 +1,13 @@
 export class CookieHandler {
-  async getCookiesForDomain(domain: string): Promise<chrome.cookies.Cookie[]> {
+  private async resolveTargetStores(tabId?: number): Promise<chrome.cookies.CookieStore[]> {
+    const stores = await chrome.cookies.getAllCookieStores();
+    if (tabId === undefined) return stores;
+
+    const matchingStore = stores.find((s) => Array.isArray(s.tabIds) && s.tabIds.includes(tabId));
+    return matchingStore ? [matchingStore] : stores;
+  }
+
+  async getCookiesForDomain(domain: string, tabId?: number): Promise<chrome.cookies.Cookie[]> {
     const currentDomain = domain.split(":")[0];
     if (!currentDomain) return [];
 
@@ -8,7 +16,7 @@ export class CookieHandler {
     const queryDomains =
       !isIp && parts.length > 1 ? parts.slice(0, -1).map((_, i) => parts.slice(i).join(".")) : [currentDomain];
 
-    const stores = await chrome.cookies.getAllCookieStores();
+    const stores = await this.resolveTargetStores(tabId);
     const seen = new Map<string, chrome.cookies.Cookie>();
 
     for (const store of stores) {
@@ -33,8 +41,8 @@ export class CookieHandler {
     return Array.from(seen.values());
   }
 
-  async clearCookiesForDomain(domain: string): Promise<void> {
-    const cookies = await this.getCookiesForDomain(domain);
+  async clearCookiesForDomain(domain: string, tabId?: number): Promise<void> {
+    const cookies = await this.getCookiesForDomain(domain, tabId);
 
     const clearPromises = cookies.map(async (cookie) => {
       try {
@@ -55,10 +63,16 @@ export class CookieHandler {
     await Promise.all(clearPromises);
   }
 
-  async restoreCookies(cookies: chrome.cookies.Cookie[], domain: string): Promise<void> {
+  async restoreCookies(cookies: chrome.cookies.Cookie[], domain: string, tabId?: number): Promise<void> {
+    let targetStoreId: string | undefined;
+    if (tabId !== undefined && typeof chrome.cookies.getAllCookieStores === "function") {
+      const stores = await chrome.cookies.getAllCookieStores();
+      targetStoreId = stores.find((s) => Array.isArray(s.tabIds) && s.tabIds.includes(tabId))?.id;
+    }
+
     const restorePromises = cookies.map(async (cookie) => {
       try {
-        const cookieDetails = this.prepareCookieForRestore(cookie, domain);
+        const cookieDetails = this.prepareCookieForRestore(cookie, domain, targetStoreId);
 
         await chrome.cookies.set(cookieDetails);
       } catch (error) {
@@ -86,7 +100,11 @@ export class CookieHandler {
     return `${protocol}://${domain}${path}`;
   }
 
-  private prepareCookieForRestore(cookie: chrome.cookies.Cookie, fallbackDomain: string): chrome.cookies.SetDetails {
+  private prepareCookieForRestore(
+    cookie: chrome.cookies.Cookie,
+    fallbackDomain: string,
+    targetStoreId?: string
+  ): chrome.cookies.SetDetails {
     const url = this.buildCookieUrl(cookie, fallbackDomain);
     const isHostPrefix = cookie.name.startsWith("__Host-");
 
@@ -97,7 +115,7 @@ export class CookieHandler {
       path: isHostPrefix ? "/" : cookie.path,
       secure: isHostPrefix ? true : cookie.secure,
       httpOnly: cookie.httpOnly,
-      storeId: cookie.storeId,
+      storeId: targetStoreId ?? cookie.storeId,
     };
 
     if (!isHostPrefix && !cookie.hostOnly && cookie.domain && cookie.domain.startsWith(".")) {

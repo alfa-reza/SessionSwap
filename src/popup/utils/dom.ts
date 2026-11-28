@@ -1,10 +1,16 @@
 import { SessionData } from "@shared/types";
 import { formatDate } from "@shared/utils";
 
+const HTML_ESCAPE_MAP: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  "\u0022": "&quot;",
+  "'": "&#39;",
+};
+
 export function escapeHtml(text: string): string {
-  const div = document.createElement("div");
-  div.textContent = text;
-  return div.innerHTML;
+  return text.replace(/[&<>"']/g, (ch) => HTML_ESCAPE_MAP[ch]);
 }
 
 export function getElementByIdSafe<T extends HTMLElement>(id: string): T {

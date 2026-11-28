@@ -1,4 +1,5 @@
 import { CookieHandler } from "@background/handlers/cookie.handler";
+import { escapeHtml } from "@popup/utils/dom";
 import { getDomainFromUrl } from "@shared/utils";
 import { afterEach, describe, expect, mock, test } from "bun:test";
 
@@ -134,5 +135,47 @@ describe("CookieHandler", () => {
     expect((setMock.mock.calls[1] as unknown[])[0]).toMatchObject({
       url: "http://localhost/",
     });
+  });
+
+  test("isolates cookie operations to the target tab's cookie store", async () => {
+    const removeMock = mock(async () => ({}));
+    const setMock = mock(async () => ({}));
+    (globalThis as { chrome?: unknown }).chrome = {
+      cookies: {
+        getAllCookieStores: mock(async () => [
+          { id: "default", tabIds: [1] },
+          { id: "incognito", tabIds: [2] },
+        ]),
+        getAll: mock(async ({ storeId }: { storeId: string }) => [
+          { domain: "example.com", name: `SID_${storeId}`, path: "/", storeId },
+        ]),
+        remove: removeMock,
+        set: setMock,
+      },
+    };
+
+    const handler = new CookieHandler();
+    const cookies = await handler.getCookiesForDomain("example.com", 2);
+    expect(cookies.map((c) => c.name)).toEqual(["SID_incognito"]);
+
+    await handler.clearCookiesForDomain("example.com", 1);
+    expect(removeMock).toHaveBeenCalledTimes(1);
+    expect((removeMock.mock.calls[0] as unknown[])[0]).toMatchObject({
+      name: "SID_default",
+      storeId: "default",
+    });
+
+    await handler.restoreCookies(cookies, "example.com", 1);
+    expect(setMock).toHaveBeenCalledTimes(1);
+    expect((setMock.mock.calls[0] as unknown[])[0]).toMatchObject({
+      name: "SID_incognito",
+      storeId: "default",
+    });
+  });
+});
+
+describe("escapeHtml", () => {
+  test("escapes HTML special characters including quotes", () => {
+    expect(escapeHtml("\"Admin\" & 'User' <script>")).toBe("&quot;Admin&quot; &amp; &#39;User&#39; &lt;script&gt;");
   });
 });

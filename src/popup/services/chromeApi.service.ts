@@ -18,7 +18,7 @@ export class ChromeApiService {
             error: chrome.runtime.lastError.message,
           });
         } else {
-          resolve(response);
+          resolve(response ?? { success: false, error: "No response from background" });
         }
       });
     });

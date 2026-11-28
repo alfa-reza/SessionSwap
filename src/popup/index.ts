@@ -71,6 +71,8 @@ class PopupController {
 
   async initialize(): Promise<string> {
     try {
+      this.saveBtn.disabled = true;
+      this.newSessionBtn.disabled = true;
       this.modalManager.hideAllModals();
       this.setActiveView("main");
       const [theme, settings, state] = await Promise.all([
@@ -142,7 +144,13 @@ class PopupController {
 
     const bindToggle = (el: HTMLInputElement, key: keyof ExtensionSettings) => {
       el.addEventListener("change", async () => {
-        this.settings = await this.popupService.updateSettings({ [key]: el.checked });
+        const previous = this.settings[key];
+        try {
+          this.settings = await this.popupService.updateSettings({ [key]: el.checked });
+        } catch (error) {
+          el.checked = previous;
+          this.showError(handleError(error, "update settings"));
+        }
       });
     };
     bindToggle(this.settingAutoReload, "autoReload");
@@ -249,6 +257,7 @@ class PopupController {
       if (sessionId === CLEAR_SITE_SENTINEL) {
         await this.popupService.clearCurrentSiteSessions();
         this.renderSessionsList();
+        this.updateClearSiteButtonState();
       } else if (sessionId) {
         await this.popupService.deleteSession(sessionId);
         this.renderSessionsList();
@@ -434,8 +443,16 @@ class PopupController {
   }
 
   private async handleThemeChange(theme: ThemePreference): Promise<void> {
+    const previousTheme = document.documentElement.dataset.theme;
     this.applyTheme(theme);
-    await this.popupService.setTheme(theme);
+    try {
+      await this.popupService.setTheme(theme);
+    } catch (error) {
+      if (previousTheme === "light" || previousTheme === "dark") {
+        this.applyTheme(previousTheme);
+      }
+      this.showError(handleError(error, "save theme"));
+    }
   }
 
   private applyTheme(theme: ThemePreference): void {
@@ -535,18 +552,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   const controller = new PopupController();
   let currentDomain = await controller.initialize();
 
-  const tabActivatedListener = async (activeInfo: { tabId: number }) => {
-    const tab = await chrome.tabs.get(activeInfo.tabId);
-    if (tab.url) {
-      const newDomain = getDomainFromUrl(tab.url);
-      if (newDomain !== currentDomain) {
-        currentDomain = await controller.initialize();
-      }
+  const tabActivatedListener = async () => {
+    try {
+      currentDomain = await controller.initialize();
+    } catch {
+      // Ignore if active tab is unavailable or closed
     }
   };
 
   const tabUpdatedListener = async (_: number, changeInfo: chrome.tabs.TabChangeInfo, tab: chrome.tabs.Tab) => {
-    if (!tab.active || changeInfo.status !== "complete" || !tab.url) return;
+    if (!tab.active || (!changeInfo.url && changeInfo.status !== "complete") || !tab.url) return;
 
     const newDomain = getDomainFromUrl(tab.url);
     if (newDomain !== currentDomain) {

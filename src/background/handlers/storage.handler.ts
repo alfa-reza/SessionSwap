@@ -23,23 +23,33 @@ export class StorageHandler {
 
   async restoreStorageData(tabId: number, data: StorageData): Promise<void> {
     try {
-      await chrome.scripting.executeScript({
+      const results = await chrome.scripting.executeScript({
         target: { tabId },
         func: injectStorageData,
         args: [data.localStorage, data.sessionStorage],
       });
+
+      if (results?.[0]?.result !== true) {
+        throw new ExtensionError("Unable to restore storage on this page");
+      }
     } catch (error) {
+      if (error instanceof ExtensionError) throw error;
       throw new ExtensionError(`Failed to restore storage data: ${error}`);
     }
   }
 
   async clearStorageData(tabId: number): Promise<void> {
     try {
-      await chrome.scripting.executeScript({
+      const results = await chrome.scripting.executeScript({
         target: { tabId },
         func: clearStorage,
       });
+
+      if (results?.[0]?.result !== true) {
+        throw new ExtensionError("Unable to clear storage on this page");
+      }
     } catch (error) {
+      if (error instanceof ExtensionError) throw error;
       throw new ExtensionError(`Failed to clear storage data: ${error}`);
     }
   }

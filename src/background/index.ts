@@ -6,11 +6,14 @@ import { MessageService } from "./services/message.service";
 const messageService = new MessageService();
 let cachedDomainCounts: Map<string, number> | null = null;
 let cachedShowBadge = DEFAULT_SETTINGS.showBadge;
+let badgeCacheGeneration = 0;
 
 async function ensureBadgeCache(): Promise<void> {
   if (cachedDomainCounts !== null) return;
 
+  const generation = badgeCacheGeneration;
   const storage = (await chrome.storage.local.get([STORAGE_KEYS.SESSIONS, STORAGE_KEYS.SETTINGS])) as ExtensionStorage;
+  if (generation !== badgeCacheGeneration) return;
 
   const counts = new Map<string, number>();
   for (const session of storage.sessions || []) {
@@ -93,6 +96,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === "local" && (changes[STORAGE_KEYS.SESSIONS] || changes[STORAGE_KEYS.SETTINGS])) {
+    badgeCacheGeneration += 1;
     cachedDomainCounts = null;
     void refreshActiveTabBadge();
   }

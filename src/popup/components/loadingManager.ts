@@ -3,14 +3,14 @@ import { CSS_CLASSES } from "@popup/utils/constants";
 export class LoadingManager {
   private isLoading = false;
 
-  showLoading(): void {
+  private showLoading(): void {
     if (!this.isLoading) {
       document.body.classList.add(CSS_CLASSES.LOADING);
       this.isLoading = true;
     }
   }
 
-  hideLoading(): void {
+  private hideLoading(): void {
     if (this.isLoading) {
       document.body.classList.remove(CSS_CLASSES.LOADING);
       this.isLoading = false;

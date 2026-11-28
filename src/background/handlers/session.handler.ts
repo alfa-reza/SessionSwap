@@ -1,6 +1,6 @@
 import { STORAGE_KEYS } from "@shared/constants";
 import { DEFAULT_SETTINGS, ExtensionStorage, SessionData, StoredSession } from "@shared/types";
-import { ExtensionError } from "@shared/utils";
+import { ExtensionError, getDomainFromUrl } from "@shared/utils";
 import { CookieHandler } from "./cookie.handler";
 import { StorageHandler } from "./storage.handler";
 
@@ -21,7 +21,7 @@ export class SessionHandler {
   async getCurrentSession(domain: string, tabId: number): Promise<StoredSession> {
     try {
       const [cookies, storageData] = await Promise.all([
-        this.cookieHandler.getCookiesForDomain(domain),
+        this.cookieHandler.getCookiesForDomain(domain, tabId),
         this.storageHandler.getStorageData(tabId),
       ]);
 
@@ -39,14 +39,21 @@ export class SessionHandler {
     const { domain, cookies, localStorage, sessionStorage } = sessionData;
 
     try {
+      if (typeof chrome.tabs?.get === "function") {
+        const tab = await chrome.tabs.get(tabId);
+        if (tab?.url && getDomainFromUrl(tab.url) !== domain) {
+          throw new ExtensionError("Active tab domain no longer matches the selected session");
+        }
+      }
+
       // Restore page storage first so restricted pages fail before clearing cookies
       await this.storageHandler.restoreStorageData(tabId, {
         localStorage,
         sessionStorage,
       });
 
-      await this.cookieHandler.clearCookiesForDomain(domain);
-      await this.cookieHandler.restoreCookies(cookies, domain);
+      await this.cookieHandler.clearCookiesForDomain(domain, tabId);
+      await this.cookieHandler.restoreCookies(cookies, domain, tabId);
 
       if (await this.shouldAutoReload()) {
         await chrome.tabs.reload(tabId);
@@ -59,7 +66,7 @@ export class SessionHandler {
   async clearSession(domain: string, tabId: number): Promise<void> {
     try {
       await Promise.all([
-        this.cookieHandler.clearCookiesForDomain(domain),
+        this.cookieHandler.clearCookiesForDomain(domain, tabId),
         this.storageHandler.clearStorageData(tabId),
       ]);
 

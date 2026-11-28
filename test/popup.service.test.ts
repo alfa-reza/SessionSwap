@@ -633,5 +633,60 @@ describe("PopupService", () => {
       await service.renameSession("1", "Work");
       expect(service.getSession("1")?.color).toBeUndefined();
     });
+
+    test("initialize propagates storage read failures instead of resetting state", async () => {
+      setupMockChromeApi({
+        getStorageData: async () => {
+          throw new Error("Storage read error");
+        },
+      });
+
+      const service = new PopupService();
+      await expect(service.initialize()).rejects.toThrow("Storage read error");
+    });
+
+    test("importBackup validates nested fields and sanitizes unsafe color/faviconUrl", async () => {
+      setupMockChromeApi();
+      const service = new PopupService();
+      await service.initialize();
+
+      const invalidPayload = JSON.stringify({
+        version: 1,
+        sessions: [
+          {
+            id: "bad-1",
+            name: "Bad Storage",
+            domain: "example.com",
+            cookies: [],
+            localStorage: ["not-an-object"],
+            sessionStorage: {},
+          },
+          {
+            id: "bad-2",
+            name: "Bad Cookie",
+            domain: "example.com",
+            cookies: [null],
+            localStorage: {},
+            sessionStorage: {},
+          },
+        ],
+      });
+      await expect(service.importBackup(invalidPayload, "merge")).rejects.toThrow("No valid sessions found");
+
+      const sanitizedPayload = JSON.stringify({
+        version: 1,
+        sessions: [
+          {
+            ...makeSession("good-1", 'Account "Admin"'),
+            faviconUrl: 'javascript:alert(1)" onclick="x',
+          },
+        ],
+        activeSessions: { __proto__: "good-1", "example.com": "good-1" },
+      });
+      const result = await service.importBackup(sanitizedPayload, "replace");
+      expect(result).toEqual({ imported: 1, skipped: 0 });
+      expect(service.getSession("good-1")?.faviconUrl).toBeUndefined();
+      expect(Object.prototype.hasOwnProperty.call(service.getState().activeSessions, "__proto__")).toBe(false);
+    });
   });
 });

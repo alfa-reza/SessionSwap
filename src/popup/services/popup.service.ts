@@ -255,12 +255,17 @@ export class PopupService {
       }
 
       const rawBackup = parsed as Partial<SessionBackup>;
-      const validSessions = rawBackup.sessions!.filter(isValidSessionRecord).map((s, idx) => ({
-        ...s,
-        createdAt: typeof s.createdAt === "number" ? s.createdAt : Date.now(),
-        lastUsed: typeof s.lastUsed === "number" ? s.lastUsed : Date.now(),
-        order: typeof s.order === "number" ? s.order : idx,
-      }));
+      const validSessions = rawBackup.sessions!.filter(isValidSessionRecord).map((s, idx) => {
+        const sanitizedFavicon = isSafeFaviconUrl(s.faviconUrl) ? s.faviconUrl : undefined;
+        return {
+          ...s,
+          color: isValidSessionColor(s.color) ? s.color : undefined,
+          ...(sanitizedFavicon ? { faviconUrl: sanitizedFavicon } : { faviconUrl: undefined }),
+          createdAt: typeof s.createdAt === "number" ? s.createdAt : Date.now(),
+          lastUsed: typeof s.lastUsed === "number" ? s.lastUsed : Date.now(),
+          order: typeof s.order === "number" ? s.order : idx,
+        };
+      });
 
       if (rawBackup.sessions!.length > 0 && validSessions.length === 0) {
         throw new ExtensionError("No valid sessions found in backup file");
@@ -277,6 +282,7 @@ export class PopupService {
         const validIds = new Set(validSessions.map((s) => s.id));
         const nextActive: ActiveSessions = {};
         for (const [domain, id] of Object.entries(incomingActive)) {
+          if (!isSafeObjectKey(domain)) continue;
           if (typeof id === "string" && validIds.has(id)) {
             nextActive[domain] = id;
           }
@@ -303,6 +309,7 @@ export class PopupService {
         }
 
         for (const [domain, id] of Object.entries(incomingActive)) {
+          if (!isSafeObjectKey(domain)) continue;
           if (!this.state.activeSessions[domain] && typeof id === "string" && existingIds.has(id)) {
             this.state.activeSessions[domain] = id;
           }
@@ -329,23 +336,17 @@ export class PopupService {
   }
 
   private async loadStorageData(): Promise<void> {
-    try {
-      const result = await this.chromeApi.getStorageData<ExtensionStorage>([
-        STORAGE_KEYS.SESSIONS,
-        STORAGE_KEYS.ACTIVE_SESSIONS,
-      ]);
+    const result = await this.chromeApi.getStorageData<ExtensionStorage>([
+      STORAGE_KEYS.SESSIONS,
+      STORAGE_KEYS.ACTIVE_SESSIONS,
+    ]);
 
-      this.state.sessions = result[STORAGE_KEYS.SESSIONS] || [];
-      this.state.activeSessions = result[STORAGE_KEYS.ACTIVE_SESSIONS] || {};
+    this.state.sessions = result[STORAGE_KEYS.SESSIONS] || [];
+    this.state.activeSessions = result[STORAGE_KEYS.ACTIVE_SESSIONS] || {};
 
-      const migrationNeeded = await this.migrateLegacySessions();
-      if (migrationNeeded) {
-        await this.saveStorageData();
-      }
-    } catch (error) {
-      console.error("Error loading storage data:", error);
-      this.state.sessions = [];
-      this.state.activeSessions = {};
+    const migrationNeeded = await this.migrateLegacySessions();
+    if (migrationNeeded) {
+      await this.saveStorageData();
     }
   }
 
@@ -380,8 +381,34 @@ export class PopupService {
   }
 }
 
+const VALID_SESSION_COLORS = new Set<SessionColor>(["blue", "green", "amber", "rose", "purple"]);
+
+function isValidSessionColor(color: unknown): color is SessionColor {
+  return typeof color === "string" && VALID_SESSION_COLORS.has(color as SessionColor);
+}
+
+function isSafeFaviconUrl(url: unknown): url is string {
+  if (typeof url !== "string") return false;
+  return url.startsWith("https://") || url.startsWith("http://") || url.startsWith("data:image/");
+}
+
+function isSafeObjectKey(key: string): boolean {
+  return key !== "__proto__" && key !== "constructor" && key !== "prototype";
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return Object.values(value).every((v) => typeof v === "string");
+}
+
+function isValidCookieRecord(cookie: unknown): boolean {
+  if (!cookie || typeof cookie !== "object" || Array.isArray(cookie)) return false;
+  const c = cookie as Partial<chrome.cookies.Cookie>;
+  return typeof c.name === "string" && typeof c.domain === "string";
+}
+
 function isValidSessionRecord(item: unknown): item is SessionData {
-  if (!item || typeof item !== "object") return false;
+  if (!item || typeof item !== "object" || Array.isArray(item)) return false;
   const s = item as Partial<SessionData>;
   return (
     typeof s.id === "string" &&
@@ -390,10 +417,11 @@ function isValidSessionRecord(item: unknown): item is SessionData {
     s.name.trim().length > 0 &&
     typeof s.domain === "string" &&
     s.domain.length > 0 &&
+    isSafeObjectKey(s.domain) &&
     Array.isArray(s.cookies) &&
-    !!s.localStorage &&
-    typeof s.localStorage === "object" &&
-    !!s.sessionStorage &&
-    typeof s.sessionStorage === "object"
+    s.cookies.every(isValidCookieRecord) &&
+    isStringRecord(s.localStorage) &&
+    isStringRecord(s.sessionStorage) &&
+    (s.color === undefined || isValidSessionColor(s.color))
   );
 }
